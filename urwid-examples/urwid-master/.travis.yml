@@ -1,0 +1,30 @@
+group: deprecated-2017Q4
+language: python
+matrix:
+  include:
+  - python: 2.7
+    env: TOXENV=py27
+  - python: 3.4
+    env: TOXENV=py34
+  - python: 3.5
+    env: TOXENV=py35
+  - python: 3.6
+    env: TOXENV=py36
+  - python: 3.7
+    dist: xenial # needed for python 3.7 as of 2019-04-05
+    env: TOXENV=py37
+  - python: pypy
+    env: TOXENV=pypy
+before_install:
+  - "sudo rm -rf /var/lib/apt/lists/*"
+  - "sudo apt-get clean"
+  - "sudo apt-get update"
+  - "sudo apt-get install python-gi python3-gi"
+install:
+  - "pip install tox coverage coveralls"
+script:
+  - "tox"
+  - "coverage report"
+after_success:
+  - "coveralls"
+
