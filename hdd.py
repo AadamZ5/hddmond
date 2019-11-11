@@ -1,5 +1,8 @@
 import pyudev
 import pySMART
+import multitasking
+
+multitasking.set_max_threads(20)
 
 class Hdd:
     """
@@ -15,7 +18,7 @@ class Hdd:
     def __init__(self, node: str):
         self.serial = '"HDD"'
         self.model = str()
-
+        self.testProgress
         self.node = node
         self._smart = pySMART.Device(self.node)
         if(self._smart.interface != None):
@@ -47,6 +50,22 @@ class Hdd:
             return True
         else:
             return False
+
+    def _testProgressHandler(self, testProgress):
+        self.testProgress = testProgress
+        self.testProgressCallback(testProgress)
+
+    @multitasking.task
+    def ShortTest(self, callback=None):
+        self.status = Hdd.STATUS_TESTING
+        self.testProgressCallback = callback
+        self._smart.run_selftest_and_wait('short', progress_handler=self._testProgressHandler)
+
+    @multitasking.task
+    def LongTest(self, callback=None):
+        self.status = Hdd.STATUS_TESTING
+        self.testProgressCallback = callback
+        self._smart.run_selftest_and_wait('long', progress_handler=self._testProgressHandler)
 
     def __str__(self):
         if(self.serial):

@@ -33,15 +33,19 @@ class HddWidget(ui.WidgetWrap):
     def __init__(self, hdd: Hdd):
         self.hdd = hdd
         self.checked = False
-        _id = ui.Text((self.hdd.status, str(self.hdd.serial)), align='left')
-        _stat = ui.Text((self.hdd.status, self.hdd._smart.assessment), align='right')
+        self._id = ui.Text((self.hdd.status, str(self.hdd.serial)), align='left')
+        self._stat = ui.Text((self.hdd.status, self.hdd._smart.assessment), align='right')
         self._check = ui.CheckBox('', state=self.checked, on_state_change=self._stateChanged)
-        _col = ui.Columns([(4,self._check), _id, _stat])
-        _lin = ui.LineBox(_col, tlcorner='', trcorner='', lline='', rline='', blcorner='', brcorner='', tline='')
-        ui.AttrMap(_lin, 'divider')
-        _pad = ui.Padding(_lin, align='center', left=2, right=2)
-        super(HddWidget, self).__init__(_pad)
+        self._col = ui.Columns([(4,self._check), self._id, self._stat])
+        self._pad = ui.Padding(self._col, align='center', left=2, right=2)
+        super(HddWidget, self).__init__(self._pad)
     
+    def ShortTest(self):
+        self.hdd.ShortTest(callback=self._progressCallback)
+
+    def _progressCallback(self, progress):
+        self._stat = ui.Text((self.hdd.status, self.hdd.testProgress), align='right')
+
     def _stateChanged(self, state: bool, udata):
         self.checked = self._check.get_state()
 
@@ -69,17 +73,17 @@ class ListModel:
         print(pySMART.DeviceList().devices)
         for d in pySMART.DeviceList().devices:
 
-            add = True
+            notFound = True
             if("/dev/" + d.name == bootNode): #Check if this is our boot drive.
-                add = False
+                notFound = False
 
             for hdd in self.hdds:
                 print("Testing: /dev/" + d.name + " == " + bootNode)
                 if(hdd.node == "/dev/" + d.name) : #This device path exists. Do not add it.
-                    add = False
+                    notFound = False
                     break
 
-            if(add): #If we didn't find it already in our list, go ahead and add it.
+            if(notFound): #If we didn't find it already in our list, go ahead and add it.
                 self.addHdd(Hdd.FromSmartDevice(d))
                 print("Added /dev/"+d.name)
             
@@ -87,6 +91,7 @@ class ListModel:
         hddWdget = HddWidget(hdd)
         self.hdds.update({hdd: hddWdget})
         self.hddEntries.append(hddWdget)
+        hddWdget.ShortTest()
 
     def removeHddHdd(self, hdd: Hdd):
         for h in self.hdds.keys():
