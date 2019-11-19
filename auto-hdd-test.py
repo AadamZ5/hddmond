@@ -41,13 +41,30 @@ class HddWidget(ui.WidgetWrap):
         super(HddWidget, self).__init__(self._pad)
     
     def ShortTest(self):
-        self.hdd.ShortTest(callback=self._progressCallback)
+        self.hdd.ShortTest()
+        self._id.set_text((self.hdd.status, str(self.hdd.serial)))
+        self._stat.set_text((self.hdd.status, str(self.hdd._getTestProgress())))
 
-    def _progressCallback(self, progress):
-        self._stat = ui.Text((self.hdd.status, self.hdd.testProgress), align='right')
+    def LongTest(self):
+        self.hdd.LongTest()
+        self._id.set_text((self.hdd.status, str(self.hdd.serial)))
+        self._stat.set_text((self.hdd.status, str(self.hdd._getTestProgress())))
+        
+    def AbortTest(self):
+        self.hdd.AbortTest()
+        self.hdd.refresh()
+
+    def UpdateTestProgress(self):
+        self.hdd.refresh()
+        self._id.set_text((self.hdd.status, str(self.hdd.serial)))
+        if(self.hdd.status == Hdd.STATUS_TESTING) or (self.hdd.status == Hdd.STATUS_LONGTST):
+            self._stat.set_text((self.hdd.status, str(self.hdd._getTestProgress())))
+        else:
+            self._stat.set_text((self.hdd.status, str(self.hdd._smart.assessment)))
 
     def _stateChanged(self, state: bool, udata):
-        self.checked = self._check.get_state()
+        self.checked = state
+        
 
 class ListModel:
     """
@@ -56,6 +73,7 @@ class ListModel:
 
 
     def __init__(self):
+        self.updateInterval = 3
         self.hdds = {}
         self.hddEntries = ui.SimpleListWalker([])
         self.monitor = pyudev.Monitor.from_netlink(context)
@@ -63,6 +81,27 @@ class ListModel:
         self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
         self.observer.start()
         self.updateDevices(bootDiskNode)
+
+    def updateUi(self, loop, user_data=None):
+        for hw in self.hddEntries:
+            hw.UpdateTestProgress()
+        loop.draw_screen()
+        loop.set_alarm_in(self.updateInterval, self.updateUi)
+
+    def ShortTest(self, button):
+        for hw in self.hddEntries:
+            if(hw.checked):
+                hw.ShortTest()
+
+    def LongTest(self, button):
+        for hw in self.hddEntries:
+            if(hw.checked):
+                hw.LongTest()
+        
+    def AbortTest(self, button):
+        for hw in self.hddEntries:
+            if(hw.checked):
+                hw.AbortTest()
 
     def updateDevices(self, bootNode: str):
         """
@@ -91,7 +130,7 @@ class ListModel:
         hddWdget = HddWidget(hdd)
         self.hdds.update({hdd: hddWdget})
         self.hddEntries.append(hddWdget)
-        hddWdget.ShortTest()
+        #hddWdget.ShortTest()
 
     def removeHddHdd(self, hdd: Hdd):
         for h in self.hdds.keys():
@@ -127,9 +166,6 @@ class ListModel:
             self.removeHddStr(device.device_node)
         #loop.start()
 
-def refresh():
-    loop.draw_screen()
-
 palette = [
     #keywd              #foregnd        "backgnd"
     (None,              'light gray',   'black'),
@@ -145,7 +181,8 @@ palette = [
     (Hdd.STATUS_DEFAULT, 'light gray', 'black'),
     (Hdd.STATUS_PASSING, 'light green', 'black'),
     (Hdd.STATUS_TESTING, 'yellow', 'black'),
-    (Hdd.STATUS_UNKNOWN, 'light gray', 'dark red')]
+    (Hdd.STATUS_UNKNOWN, 'light gray', 'dark red'),
+    (Hdd.STATUS_LONGTST, 'light magenta', 'black')]
     
 focus_map = {
     'heading': 'focus heading',
@@ -160,8 +197,10 @@ ListView = ui.ListBox(listModel.hddEntries)
 border = ui.LineBox(ListView)
 HddList = ui.Frame(header=ui.Text("Harddrives", align='center', wrap='clip'), body=border)
 
-
-SubControls = ui.ListBox([])
+ShortTest = ui.Button("Short test", on_press=listModel.ShortTest)
+LongTest = ui.Button("Long test", on_press=listModel.LongTest)
+AbortTest = ui.Button("Abort test", on_press=listModel.AbortTest)
+SubControls = ui.ListBox([ShortTest,LongTest,AbortTest])
 SubControls = ui.LineBox(SubControls)
 SubControls = ui.Frame(header=ui.Text("HDD Options", align="center", wrap="clip"), body=SubControls)
 
@@ -174,5 +213,6 @@ CommandCenter = ui.Pile([Controls, SubControls])
 Master = ui.Columns([('weight', 70, HddList), ('weight', 30, CommandCenter)], min_width=10)
 
 loop = ui.MainLoop(ui.Filler(Master, 'middle', 80), palette)
-ui.connect_signal(listModel.hddEntries, 'modified', callback=refresh)
+ui.connect_signal(listModel.hddEntries, 'modified', callback=listModel.updateUi, user_arg=loop)
+loop.set_alarm_in(5, listModel.updateUi)
 loop.run()
