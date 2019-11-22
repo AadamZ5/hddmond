@@ -2,8 +2,9 @@ import pyudev
 import pySMART
 import multitasking
 import time
+import multiprocessing
+import datetime
 
-multitasking.set_max_threads(20)
 
 class Hdd:
     """
@@ -20,34 +21,58 @@ class Hdd:
     def __init__(self, node: str):
         self.serial = '"HDD"'
         self.model = str()
-        self.testProgress = ""
+        self.testProgress = int()
         self.node = node
+        self.estimatedCompletionTime = datetime.datetime.now()
         self._smart = pySMART.Device(self.node)
+
+        #Check interface
         if(self._smart.interface != None):
-            #print("Has interface " + str(self._smart.interface))
-            #print("Result: " + str(self._smart.assessment))
+
+            #Set our status according to initial health assesment
             if(self._smart.assessment == "PASS"):
                 self.status = Hdd.STATUS_DEFAULT
             elif(self._smart.assessment == "FAIL"):
                 self.status = Hdd.STATUS_FAILING
+            else:
+                self.status = Hdd.STATUS_UNKNOWN
+
+            #See if we're currently running a test
+            status, testObj, remain = self._smart.get_selftest_result()
+            if status == 1:
+                self.testProgress = self._smart._test_progress
+                if not (self.status == Hdd.STATUS_TESTING) or (self.status == Hdd.STATUS_LONGTST):
+                    self.status = Hdd.STATUS_LONGTST #We won't know if this is a short or long test, so assume it can be long for sake of not pissing off the user.
+                else:
+                    pass
+            
             self.serial = self._smart.serial
             self.model = self._smart.model
         else:
-            #print("Can't read SMART data!")
             self.status = Hdd.STATUS_UNKNOWN
             self.serial = "Unknown HDD"
             self.model = ""
+            #Idk where we go from here
         
     @staticmethod
     def FromSmartDevice(d: pySMART.Device):
+        '''
+        Create a HDD object from a pySMART Device object
+        '''
         return Hdd("/dev/" + d.name)
 
     @staticmethod
     def FromUdevDevice(d: pyudev.Device): #pyudev.Device
+        '''
+        Create a HDD object from a pyudev Device object
+        '''
         return Hdd(d.device_node)
 
     @staticmethod
     def IsHdd(node: str):
+        '''
+        See if this storage object has an HDD-like interface.
+        '''
         if(pySMART.Device(node).interface != None):
             return True
         else:
@@ -55,26 +80,55 @@ class Hdd:
 
     def ShortTest(self):
         self.status = Hdd.STATUS_TESTING
-        self._smart.run_selftest('short')
-        self.testProgress = self._smart._test_progress
-        
+        status, message, time = self._smart.run_selftest('short')
+        if(status == 0):
+            self.estimatedCompletionTime = datetime.datetime.strptime(str(time), r'%a %b %d %H:%M:%S %Y')
+        self._smart.update()
+
     def LongTest(self):
         self.status = Hdd.STATUS_LONGTST
-        self._smart.run_selftest('long')
+        status, message, time = self._smart.run_selftest('long')
+        if(status == 0):
+            self.estimatedCompletionTime = datetime.datetime.strptime(str(time), r'%a %b %d %H:%M:%S %Y')
+        self._smart.update()
 
     def AbortTest(self):
         if(self._smart._test_running):
             self._smart.abort_selftest()
             self.status = Hdd.STATUS_UNKNOWN
             self._smart._test_running = False
+            self.estimatedCompletionTime = datetime.datetime.now()
 
-    def _getTestProgress(self):
-        return self._smart._test_progress
+    def GetTestProgressString(self):
+        return str(self.testProgress) + "%"
+
+    def _getRemainingTime(self):
+        complete = self.estimatedCompletionTime
+        now = datetime.datetime.now()
+        if complete > now:
+            timedeltaLeft = (complete - now)
+            mm, ss = divmod(timedeltaLeft.total_seconds(), 60)
+            hh, mm = divmod(mm, 60)
+            s = "%d:%02d:%02d" % (hh, mm, ss)
+            return s
+        else:
+            return "0:00:00"
+    def UpdateSmart(self):
+        self._smart.update()
+        self.testProgress = self._smart._test_progress
+        #print(self._smart._test_running)
 
     def refresh(self):
-        if self._smart._test_running:
+        #status, testObj, remain = self._smart.get_selftest_result()
+        #self._smart.update()
+        if self._smart._test_running == True:
             self.testProgress = self._smart._test_progress
-            self.status = self.status
+            if not (self.status == Hdd.STATUS_TESTING) or (self.status == Hdd.STATUS_LONGTST):
+                self.status = Hdd.STATUS_LONGTST
+            else:
+                pass
+            
+        
         elif self._smart.assessment == 'PASS':
             self.status = Hdd.STATUS_PASSING
         elif self._smart.assessment == 'FAIL':

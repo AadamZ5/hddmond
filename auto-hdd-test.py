@@ -8,6 +8,8 @@ import urwid as ui
 from hdd import Hdd
 import hddctl
 import pySMART
+import time
+import threading
 
 bootPartNode = subprocess.Popen("df -h | grep '/$' | sed 's/\\(^\\/dev\\/\\w*\\).*/\\1/'", shell=True, stdout=subprocess.PIPE).stdout.read() #Thanks https://askubuntu.com/questions/542351/determine-boot-disk
 bootPartNode = bootPartNode.decode().rstrip()
@@ -26,29 +28,35 @@ for device in context.list_devices(subsystem='block'):
         print()
 
 def exit_program(key):
+    listModel.stop()
     raise ui.ExitMainLoop()
 
 
 class HddWidget(ui.WidgetWrap):
     def __init__(self, hdd: Hdd):
         self.hdd = hdd
-        self.checked = False
+        self._checked = False
         self._id = ui.Text((self.hdd.status, str(self.hdd.serial)), align='left')
-        self._stat = ui.Text((self.hdd.status, self.hdd._smart.assessment), align='right')
-        self._check = ui.CheckBox('', state=self.checked, on_state_change=self._stateChanged)
-        self._col = ui.Columns([(4,self._check), self._id, self._stat])
+        self._node = ui.Text(self.hdd.node, align='center')
+        self._stat = ui.Text((self.hdd.status, self.hdd._smart.assessment), align='center')
+        self._check = ui.CheckBox('', state=self._checked, on_state_change=self._stateChanged)
+        self._col = ui.Columns([(4,self._check), ('weight', 50, self._id), ('weight', 25, self._node), ('weight', 25, self._stat)])
         self._pad = ui.Padding(self._col, align='center', left=2, right=2)
         super(HddWidget, self).__init__(self._pad)
     
     def ShortTest(self):
         self.hdd.ShortTest()
         self._id.set_text((self.hdd.status, str(self.hdd.serial)))
-        self._stat.set_text((self.hdd.status, str(self.hdd._getTestProgress())))
+        self._stat.set_text((self.hdd.status, str(self.hdd.GetTestProgressString())))
+
+    @property
+    def checked(self):
+        return self._check.get_state()
 
     def LongTest(self):
         self.hdd.LongTest()
         self._id.set_text((self.hdd.status, str(self.hdd.serial)))
-        self._stat.set_text((self.hdd.status, str(self.hdd._getTestProgress())))
+        self._stat.set_text((self.hdd.status, str(self.hdd.GetTestProgressString())))
         
     def AbortTest(self):
         self.hdd.AbortTest()
@@ -57,13 +65,15 @@ class HddWidget(ui.WidgetWrap):
     def UpdateTestProgress(self):
         self.hdd.refresh()
         self._id.set_text((self.hdd.status, str(self.hdd.serial)))
+
         if(self.hdd.status == Hdd.STATUS_TESTING) or (self.hdd.status == Hdd.STATUS_LONGTST):
-            self._stat.set_text((self.hdd.status, str(self.hdd._getTestProgress())))
+            self._stat.set_text((self.hdd.status, str(self.hdd.GetTestProgressString())))
         else:
             self._stat.set_text((self.hdd.status, str(self.hdd._smart.assessment)))
+        
 
     def _stateChanged(self, state: bool, udata):
-        self.checked = state
+        self._checked = state
         
 
 class ListModel:
@@ -81,11 +91,17 @@ class ListModel:
         self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
         self.observer.start()
         self.updateDevices(bootDiskNode)
+        self._loopgo = True
+        self.updateThread = threading.Thread(target=self._updateLoop)
+        self.updateThread.start()
+
+    def stop(self):
+        self._loopgo = False
+        self.updateThread.join()
 
     def updateUi(self, loop, user_data=None):
         for hw in self.hddEntries:
             hw.UpdateTestProgress()
-        loop.draw_screen()
         loop.set_alarm_in(self.updateInterval, self.updateUi)
 
     def ShortTest(self, button):
@@ -102,6 +118,18 @@ class ListModel:
         for hw in self.hddEntries:
             if(hw.checked):
                 hw.AbortTest()
+
+    def EraseDisk(self, button):
+        ui.PopUpLauncher(EraseAreYouSure)
+        pass
+
+    def _updateLoop(self):
+        while self._loopgo:
+
+            for hdd in list(self.hdds.keys()):
+                if(hdd.status == Hdd.STATUS_LONGTST) or (hdd.status == Hdd.STATUS_TESTING):
+                    hdd.UpdateSmart()
+            time.sleep(1.5)
 
     def updateDevices(self, bootNode: str):
         """
@@ -200,7 +228,11 @@ HddList = ui.Frame(header=ui.Text("Harddrives", align='center', wrap='clip'), bo
 ShortTest = ui.Button("Short test", on_press=listModel.ShortTest)
 LongTest = ui.Button("Long test", on_press=listModel.LongTest)
 AbortTest = ui.Button("Abort test", on_press=listModel.AbortTest)
-SubControls = ui.ListBox([ShortTest,LongTest,AbortTest])
+Erase = ui.Button("Erase disk", on_press=listModel.EraseDisk)
+
+EraseAreYouSure = ui.Frame(ui.ListBox([ui.Text("Erase disks?"), ui.Button("Yes"), ui.Button("No")]), header="Are you sure?")
+
+SubControls = ui.ListBox([ShortTest,LongTest,AbortTest, ui.Divider(), Erase])
 SubControls = ui.LineBox(SubControls)
 SubControls = ui.Frame(header=ui.Text("HDD Options", align="center", wrap="clip"), body=SubControls)
 
@@ -214,5 +246,7 @@ Master = ui.Columns([('weight', 70, HddList), ('weight', 30, CommandCenter)], mi
 
 loop = ui.MainLoop(ui.Filler(Master, 'middle', 80), palette)
 ui.connect_signal(listModel.hddEntries, 'modified', callback=listModel.updateUi, user_arg=loop)
-loop.set_alarm_in(5, listModel.updateUi)
-loop.run()
+loop.set_alarm_in(1, listModel.updateUi)
+
+if __name__ == '__main__':
+    loop.run()
