@@ -10,6 +10,7 @@ import hddctl
 import pySMART
 import time
 import threading
+import sasdetection
 
 bootPartNode = subprocess.Popen("df -h | grep '/$' | sed 's/\\(^\\/dev\\/\\w*\\).*/\\1/'", shell=True, stdout=subprocess.PIPE).stdout.read() #Thanks https://askubuntu.com/questions/542351/determine-boot-disk
 bootPartNode = bootPartNode.decode().rstrip()
