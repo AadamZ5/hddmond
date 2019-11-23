@@ -125,7 +125,6 @@ class ListModel:
 
     def _updateLoop(self):
         while self._loopgo:
-
             for hdd in list(self.hdds.keys()):
                 if(hdd.status == Hdd.STATUS_LONGTST) or (hdd.status == Hdd.STATUS_TESTING):
                     hdd.UpdateSmart()
@@ -135,7 +134,6 @@ class ListModel:
         """
         Checks the system's existing device list and gatheres already connected hdds.
         """
-
         #Check to see if this device path already exists in our application.
         print(pySMART.DeviceList().devices)
         for d in pySMART.DeviceList().devices:
