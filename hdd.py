@@ -1,9 +1,10 @@
 import pyudev
 import pySMART
-import multitasking
 import time
 import multiprocessing
+import subprocess
 import datetime
+import pciaddress
 
 
 class Hdd:
@@ -18,11 +19,16 @@ class Hdd:
     STATUS_PASSING = 'passinghdd'
     STATUS_UNKNOWN = 'unknownhdd'
 
+    
+
     def __init__(self, node: str):
         self.serial = '"HDD"'
         self.model = str()
         self.testProgress = int()
         self.node = node
+        self.name = str(node).replace('/dev/', '')
+        self._udev = pyudev.Devices.from_device_file(pyudev.Context(), node)
+        self.OnPciAddress = None
         self.estimatedCompletionTime = datetime.datetime.now()
         self._smart = pySMART.Device(self.node)
 
@@ -46,13 +52,35 @@ class Hdd:
                 else:
                     pass
             
-            self.serial = self._smart.serial
+            self.serial = str(self._smart.serial).replace('-', '')
             self.model = self._smart.model
         else:
             self.status = Hdd.STATUS_UNKNOWN
             self.serial = "Unknown HDD"
             self.model = ""
             #Idk where we go from here
+        
+        sysp = self._udev.sys_path
+
+#     0    1     2        3           4        5     6        7          8      9   10
+#EX1:   '/sys/devices/pci0000:00/0000:00:1f.2/ata2/host2/target2:0:0/2:0:0:0/block/sdb        <== For a drive on the internal SATA controller!
+
+#     0    1     2        3           4             5        6       7          8             9         10      11   12
+#EX2:   '/sys/devices/pci0000:00/0000:00:01.0/0000:01:00.0/host0/port-0:3/end_device-0:3/target0:0:3/0:0:3:0/block/sdc'   
+
+        driveinfo = sysp.split('/')
+        pci = str(driveinfo[4])
+        print(pci)
+        pci_seg_bus_devfun = pci.split(':')
+#        ['0000', '00', '01.0']             <----------<|
+        seg = str(pci_seg_bus_devfun[0])          #     |
+        bus = str(pci_seg_bus_devfun[1])          #     ^
+        devfun = pci_seg_bus_devfun[2].split('.') #The device and function numbers are split by a '.' instead of a ':'....
+        dev = str(devfun[0])
+        fun = str(devfun[1])
+
+        self.OnPciAddress = pciaddress.PciAddress(seg,bus,dev,fun)
+        
         
     @staticmethod
     def FromSmartDevice(d: pySMART.Device):
@@ -66,7 +94,9 @@ class Hdd:
         '''
         Create a HDD object from a pyudev Device object
         '''
-        return Hdd(d.device_node)
+        h = Hdd(d.device_node)
+        h._udev = d
+        return h
 
     @staticmethod
     def IsHdd(node: str):

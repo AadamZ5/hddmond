@@ -6,7 +6,6 @@ from pySMART import Device
 import re
 import urwid as ui
 from hdd import Hdd
-import hddctl
 import pySMART
 import time
 import threading
@@ -28,6 +27,8 @@ for device in context.list_devices(subsystem='block'):
     else:
         print()
 
+
+
 def exit_program(key):
     listModel.stop()
     raise ui.ExitMainLoop()
@@ -39,9 +40,10 @@ class HddWidget(ui.WidgetWrap):
         self._checked = False
         self._id = ui.Text((self.hdd.status, str(self.hdd.serial)), align='left')
         self._node = ui.Text(self.hdd.node, align='center')
+        self._pci = ui.Text(str(self.hdd.OnPciAddress), align='center')
         self._stat = ui.Text((self.hdd.status, self.hdd._smart.assessment), align='center')
         self._check = ui.CheckBox('', state=self._checked, on_state_change=self._stateChanged)
-        self._col = ui.Columns([(4,self._check), ('weight', 50, self._id), ('weight', 25, self._node), ('weight', 25, self._stat)])
+        self._col = ui.Columns([(4,self._check), ('weight', 50, self._id), ('weight', 25, self._pci), ('weight', 25, self._node), ('weight', 25, self._stat)])
         self._pad = ui.Padding(self._col, align='center', left=2, right=2)
         super(HddWidget, self).__init__(self._pad)
     
@@ -144,7 +146,7 @@ class ListModel:
                 notFound = False
 
             for hdd in self.hdds:
-                print("Testing: /dev/" + d.name + " == " + bootNode)
+                print("Testing: /dev/" + d.name + " == " + hdd.node)
                 if(hdd.node == "/dev/" + d.name) : #This device path exists. Do not add it.
                     notFound = False
                     break

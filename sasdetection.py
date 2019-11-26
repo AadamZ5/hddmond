@@ -1,15 +1,56 @@
 import subprocess
+import pciaddress
+import hdd
 
 class SasDevice:
-    def __init__(self, index=None, pciAddress=None):
+    def __init__(self, index=None):
         self.Index = int(index)
-        self.PciAddress = []
-        pci = str(pciAddress).replace('h', '')
-        pcia = pci.split(':')
-        for part in pcia:
-            self.PciAddress.append(int(part))
-
+        self.PciAddress = None
         self.Devices = {} #{Serial: slot}
+
+        displayInfo = subprocess.run([SasDetective.sas2ircu, str(self.Index), 'DISPLAY'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if (displayInfo.returncode == 0):
+
+            startIndex = 0
+            endInex = 0
+
+            lines = str(displayInfo.stdout).splitlines()
+            for i in range(len(lines)):
+                if("Controller information" in str(lines[i]).strip()):
+                    startIndex = i
+            
+            for i in range(startIndex + 2, len(lines)):
+                if(lines[i].startswith("--------")):
+                    endIndex = i
+
+            #Should end up with this
+            # Controller information                                                    | i = 0
+            # ------------------------------------------------------------------------  | i = 1
+            #   Controller type                         : SAS2008                       | i = 2
+            #   BIOS version                            : 7.39.02.00                    | i = 3
+            #   Firmware version                        : 20.00.06.00                   | i = 4
+            #   Channel description                     : 1 Serial Attached SCSI        | i = 5
+            #   Initiator ID                            : 0                             | i = 6
+            #   Maximum physical devices                : 255                           | i = 7
+            #   Concurrent commands supported           : 3432                          | i = 8
+            #   Slot                                    : 16                            | i = 9
+            #   Segment                                 : 0                             | i = 10
+            #   Bus                                     : 1                             | i = 11
+            #   Device                                  : 0                             | i = 12
+            #   Function                                : 0                             | i = 13
+            #   RAID Support                            : No                            | i = 14
+            # ------------------------------------------------------------------------  | i = 15
+
+            data = lines[startIndex:endIndex]
+
+            segment = "{0:0=4d}".format(data[10].split(':')[1])
+            bus =  "{0:0=2d}".format(data[11].split(':')[1])
+            device = "{0:0=2d}".format(data[12].split(':')[1])
+            function = "{0}".format(data[11].split(':')[1])
+
+            self.PciAddress = pciaddress.PciAddress(segment, bus, device, function)
+
+
         self.GetDevices()
     
     def GetPortFromSerial(self, serial:str):
@@ -70,8 +111,6 @@ class SasDevice:
         # SAS2IRCU: Command DISPLAY Completed Successfully.
         # SAS2IRCU: Utility Completed Successfully.
 
-
-
         if(displayInfo.returncode == 0):
             output = str(displayInfo.stdout)
             lines = output.splitlines()
@@ -91,7 +130,7 @@ class SasDevice:
             
             data = lines[startIndex:endIndex]   #If startIndex and endIndex are never set for some reason, our data will consist of lines[0:0]
             for i in range(len(data)):
-                if(data[i].startswith("Device is a Hard disk")):
+                if(data[i].strip().startswith("Device is a Hard disk")):
                     #The next 10 lines are device information
 
                     # Device is a Hard disk                                         | i+0
@@ -105,8 +144,8 @@ class SasDevice:
                     #   Serial No                               : WDWCAT16599125    | i+8
                     #   Protocol                                : SATA              | i+9
                     #   Drive Type                              : SATA_HDD          | i+10
-                    serial = str(data[i+8])
-                    slot = int(str(data[i+2]))
+                    serial = str(data[i+8].split(':')[1].strip())
+                    slot = int(str(data[i+2].split(':')[1].strip()))
                     self.Devices.update({serial: slot})
                     i += 10 #advance to the next block of data
         else:
@@ -119,7 +158,7 @@ class SasDetective:
         listSas = subprocess.run([SasDetective.sas2ircu, 'LIST'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
         self.SasDevices = []
-
+        
         if(listSas.returncode == 0):
             output = str(listSas.stdout)
             lines = output.splitlines()
@@ -140,26 +179,20 @@ class SasDetective:
                     #    0     SAS2008     1000h    72h   00h:01h:00h:00h      1000h   3020h 
                     # SAS2IRCU: Utility Completed Successfully.
 
-                    device = SasDevice(index=int(cols[0]), pciAddress=cols[4]) #SasDevice will remove the h from the PCI address
+                    device = SasDevice(index=int(cols[0])) #SasDevice will remove the h from the PCI address
                     self.SasDevices.append(device)
                 else:
                     pass #The line was just informational text, not data we needed
         else:
             pass #Incorperate error handling?
 
-    def GetDevicePort(self, serial, pci=None):
-        
-        if(pci != None):
-            pci = str(pci).replace('[', '').replace(']', '')
-            pci = pci.split(':')
-            pciAddress = []
-            for part in pci:
-                pciAddress.append(int(part))
+    def GetDevicePort(self, hdd: hdd.Hdd):
 
+        if(hdd.OnPciAddress != None):
             #First find the device with the same leading PCI address
             for sas in self.SasDevices:
-                if sas.PciAddress[0] == pciAddress[0] and sas.PciAddress[1] == pciAddress[1]:
-                    return sas.GetPortFromSerial(serial) #We found a SAS device with that PCI address. Let it try and find the device
+                if sas.PciAddress == hdd.OnPciAddress:
+                    return sas.GetPortFromSerial(hdd.serial) #We found a SAS device with that PCI address. Let it try and find the device
             
             #The loop finished and we didn't find anything at that PCI address
             return None
@@ -167,7 +200,7 @@ class SasDetective:
         #If the PCI address isn't given, More resource intensive.
         else:
             for sas in self.SasDevices:
-                d = sas.GetPortFromSerial(serial)
+                d = sas.GetPortFromSerial(hdd.serial)
                 if(d != None):
                     return d #We found a device
 
