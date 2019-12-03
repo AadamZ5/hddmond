@@ -22,6 +22,9 @@ class Hdd:
     
 
     def __init__(self, node: str):
+        '''
+        Create a hdd object from its symlink node
+        '''
         self.serial = '"HDD"'
         self.model = str()
         self.testProgress = int()
@@ -31,6 +34,7 @@ class Hdd:
         self.OnPciAddress = None
         self.estimatedCompletionTime = datetime.datetime.now()
         self._smart = pySMART.Device(self.node)
+        self.Port = None
 
         #Check interface
         if(self._smart.interface != None):
@@ -66,20 +70,12 @@ class Hdd:
 #EX1:   '/sys/devices/pci0000:00/0000:00:1f.2/ata2/host2/target2:0:0/2:0:0:0/block/sdb        <== For a drive on the internal SATA controller!
 
 #     0    1     2        3           4             5        6       7          8             9         10      11   12
-#EX2:   '/sys/devices/pci0000:00/0000:00:01.0/0000:01:00.0/host0/port-0:3/end_device-0:3/target0:0:3/0:0:3:0/block/sdc'   
+#EX2:   '/sys/devices/pci0000:00/0000:00:01.0/0000:01:00.0/host0/port-0:3/end_device-0:3/target0:0:3/0:0:3:0/block/sdc'   <== For a drive on the LSI SAS controller!
 
         driveinfo = sysp.split('/')
         pci = str(driveinfo[4])
-        print(pci)
-        pci_seg_bus_devfun = pci.split(':')
-#        ['0000', '00', '01.0']             <----------<|
-        seg = str(pci_seg_bus_devfun[0])          #     |
-        bus = str(pci_seg_bus_devfun[1])          #     ^
-        devfun = pci_seg_bus_devfun[2].split('.') #The device and function numbers are split by a '.' instead of a ':'....
-        dev = str(devfun[0])
-        fun = str(devfun[1])
 
-        self.OnPciAddress = pciaddress.PciAddress(seg,bus,dev,fun)
+        #self.OnPciAddress = 
         
         
     @staticmethod

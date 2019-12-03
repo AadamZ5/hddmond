@@ -10,6 +10,7 @@ import pySMART
 import time
 import threading
 import sasdetection
+import portdetection
 
 bootPartNode = subprocess.Popen("df -h | grep '/$' | sed 's/\\(^\\/dev\\/\\w*\\).*/\\1/'", shell=True, stdout=subprocess.PIPE).stdout.read() #Thanks https://askubuntu.com/questions/542351/determine-boot-disk
 bootPartNode = bootPartNode.decode().rstrip()
@@ -33,6 +34,7 @@ def exit_program(key):
     listModel.stop()
     raise ui.ExitMainLoop()
 
+PortDetector = portdetection.PortDetection()
 
 class HddWidget(ui.WidgetWrap):
     def __init__(self, hdd: Hdd):
@@ -41,9 +43,10 @@ class HddWidget(ui.WidgetWrap):
         self._id = ui.Text((self.hdd.status, str(self.hdd.serial)), align='left')
         self._node = ui.Text(self.hdd.node, align='center')
         self._pci = ui.Text(str(self.hdd.OnPciAddress), align='center')
+        self._port = ui.Text(str(self.hdd.Port), align='center')
         self._stat = ui.Text((self.hdd.status, self.hdd._smart.assessment), align='center')
         self._check = ui.CheckBox('', state=self._checked, on_state_change=self._stateChanged)
-        self._col = ui.Columns([(4,self._check), ('weight', 50, self._id), ('weight', 25, self._pci), ('weight', 25, self._node), ('weight', 25, self._stat)])
+        self._col = ui.Columns([(4,self._check), ('weight', 50, self._id), ('weight', 25, self._port), ('weight', 25, self._pci), ('weight', 25, self._node), ('weight', 25, self._stat)])
         self._pad = ui.Padding(self._col, align='center', left=2, right=2)
         super(HddWidget, self).__init__(self._pad)
     
@@ -140,7 +143,7 @@ class ListModel:
         #Check to see if this device path already exists in our application.
         print(pySMART.DeviceList().devices)
         for d in pySMART.DeviceList().devices:
-
+            
             notFound = True
             if("/dev/" + d.name == bootNode): #Check if this is our boot drive.
                 notFound = False
@@ -150,9 +153,12 @@ class ListModel:
                 if(hdd.node == "/dev/" + d.name) : #This device path exists. Do not add it.
                     notFound = False
                     break
-
+            
             if(notFound): #If we didn't find it already in our list, go ahead and add it.
-                self.addHdd(Hdd.FromSmartDevice(d))
+                h = Hdd.FromSmartDevice(d)
+                h.OnPciAddress = PortDetector.GetPci(h._udev.sys_path)
+                h.Port = PortDetector.GetPort(h._udev.sys_path, h.OnPciAddress, h.serial)
+                self.addHdd(h)
                 print("Added /dev/"+d.name)
             
     def addHdd(self, hdd: Hdd):
@@ -189,6 +195,8 @@ class ListModel:
         if(action == 'add') and (device != None):
             #print("Adding device at " + str(device.device_node))
             hdd = Hdd.FromUdevDevice(device)
+            hdd.OnPciAddress = PortDetector.GetPci(hdd._udev.sys_path)
+            hdd.Port = PortDetector.GetPort(hdd._udev.sys_path, hdd.OnPciAddress, hdd.serial)
             self.addHdd(hdd)
             
         elif(action == 'remove') and (device != None):

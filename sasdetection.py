@@ -1,12 +1,11 @@
 import subprocess
 import pciaddress
-import hdd
 
 class SasDevice:
     def __init__(self, index=None):
         self.Index = int(index)
         self.PciAddress = None
-        self.Devices = {} #{Serial: slot}
+        self.Devices = {} #{Serial *str: slot *int}
 
         displayInfo = subprocess.run([SasDetective.sas2ircu, str(self.Index), 'DISPLAY'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if (displayInfo.returncode == 0):
@@ -43,15 +42,16 @@ class SasDevice:
 
             data = lines[startIndex:endIndex]
 
-            segment = "{0:0=4d}".format(data[10].split(':')[1])
-            bus =  "{0:0=2d}".format(data[11].split(':')[1])
-            device = "{0:0=2d}".format(data[12].split(':')[1])
-            function = "{0}".format(data[11].split(':')[1])
+            segment = data[10].split(':')[1].strip().zfill(4)
+            bus =  data[11].split(':')[1].strip().zfill(2)
+            device = data[12].split(':')[1].strip().zfill(2)
+            function = data[13].split(':')[1].strip().zfill(1)
 
             self.PciAddress = pciaddress.PciAddress(segment, bus, device, function)
-
+            #print(self.PciAddress)
 
         self.GetDevices()
+        #print(self.Devices)
     
     def GetPortFromSerial(self, serial:str):
         return self.Devices.get(serial, None)
@@ -163,47 +163,55 @@ class SasDetective:
             output = str(listSas.stdout)
             lines = output.splitlines()
             for entry in lines:
-                if(entry.lstrip().split()[0].isnumeric()):
-                    cols = entry.strip().split()
+                splits = entry.split()
+                if(len(splits) >= 1):
+                    if(splits[0].isnumeric()):
+                        cols = entry.strip().split()
 
-                    #Example output:
-                    # LSI Corporation SAS2 IR Configuration Utility.
-                    # Version 5.00.00.00 (2010.02.09) 
-                    # Copyright (c) 2009 LSI Corporation. All rights reserved. 
-                    #
-                    #
-            #   col:    0         1           2        3         4                  5      6
-                    #          Adapter      Vendor  Device                       SubSys  SubSys 
-                    #  Index    Type          ID      ID    Pci Address          Ven ID  Dev ID 
-                    #  -----  ------------  ------  ------  -----------------    ------  ------ 
-                    #    0     SAS2008     1000h    72h   00h:01h:00h:00h      1000h   3020h 
-                    # SAS2IRCU: Utility Completed Successfully.
+                        #Example output:
+                        # LSI Corporation SAS2 IR Configuration Utility.
+                        # Version 5.00.00.00 (2010.02.09) 
+                        # Copyright (c) 2009 LSI Corporation. All rights reserved. 
+                        #
+                        #
+                #   col:    0         1           2        3         4                  5      6
+                        #          Adapter      Vendor  Device                       SubSys  SubSys 
+                        #  Index    Type          ID      ID    Pci Address          Ven ID  Dev ID 
+                        #  -----  ------------  ------  ------  -----------------    ------  ------ 
+                        #    0     SAS2008     1000h    72h   00h:01h:00h:00h      1000h   3020h 
+                        # SAS2IRCU: Utility Completed Successfully.
 
-                    device = SasDevice(index=int(cols[0])) #SasDevice will remove the h from the PCI address
-                    self.SasDevices.append(device)
-                else:
-                    pass #The line was just informational text, not data we needed
+                        device = SasDevice(index=int(cols[0])) #SasDevice will remove the h from the PCI address
+                        self.SasDevices.append(device)
+                    else:
+                        pass #The line was just informational text, not data we needed
         else:
             pass #Incorperate error handling?
 
-    def GetDevicePort(self, hdd: hdd.Hdd):
+    def GetDevicePort(self, pci, serial):
 
-        if(hdd.OnPciAddress != None):
+        if(pci != None):
+            #print("Got PCI: " + str(pci))
             #First find the device with the same leading PCI address
             for sas in self.SasDevices:
-                if sas.PciAddress == hdd.OnPciAddress:
-                    return sas.GetPortFromSerial(hdd.serial) #We found a SAS device with that PCI address. Let it try and find the device
+                #print("Check " + str(pci) + " == " + str(sas.PciAddress))
+                if sas.PciAddress == pci:
+                    #print("Looking in SAS index " + str(sas.Index))
+                    return sas.GetPortFromSerial(serial) #We found a SAS device with that PCI address. Let it try and find the device
             
             #The loop finished and we didn't find anything at that PCI address
             return None
         
         #If the PCI address isn't given, More resource intensive.
-        else:
+        elif(serial != None):
+            #print("Looking for drive " + serial + " in all SAS cards")
             for sas in self.SasDevices:
-                d = sas.GetPortFromSerial(hdd.serial)
+                d = sas.GetPortFromSerial(serial)
                 if(d != None):
                     return d #We found a device
 
             #The loop finished and we didn't find anything
             return None
+        else:
+            return None #What do you want us to do if you didn't give us anything?
                 

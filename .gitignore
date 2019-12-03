@@ -1,2 +1,4 @@
 .vscode/.ropeproject/config.py
 .vscode/settings.json
+./log
+./__pycache__
