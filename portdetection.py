@@ -20,6 +20,10 @@ class PortDetection():
         self.blacklistPcis = []
         for p in pcisToParse:
             self.blacklistPcis.append(PciAddress.ParseAddr(p))
+
+    def Update(self):
+        self.ahcidet.Update()
+        self.sasdet.Update()
         
     def GetPci(self, syspath):
         cols = syspath.split('/')

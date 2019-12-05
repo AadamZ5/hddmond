@@ -57,5 +57,8 @@ class AhciDetective():
         else:
             return None
 
+    def Update(self):
+        pass
+
 
 

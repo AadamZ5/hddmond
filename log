@@ -1,4 +1,0 @@
-HDD CREATE FAILURE (2019-12-03 16:57:40.989470) kernal passed: sda symlink: /dev/sda
-expected str, bytes or os.PathLike object, not NoneType
-
-Params = ['/home/vuser/hdd-testing/portdetector.py', 'sda']

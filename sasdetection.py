@@ -11,7 +11,7 @@ class SasDevice:
         if (displayInfo.returncode == 0):
 
             startIndex = 0
-            endInex = 0
+            endIndex = 0
 
             lines = str(displayInfo.stdout).splitlines()
             for i in range(len(lines)):
@@ -215,3 +215,6 @@ class SasDetective:
         else:
             return None #What do you want us to do if you didn't give us anything?
                 
+    def Update(self):
+        for sasdevice in self.SasDevices:
+            sasdevice.GetDevices()

@@ -18,6 +18,8 @@ class Hdd:
     STATUS_DEFAULT = 'defaulthdd'
     STATUS_PASSING = 'passinghdd'
     STATUS_UNKNOWN = 'unknownhdd'
+    TASK_ERASING = 'taskerase'
+    TASK_NONE = 'tasknone'
 
     
 
@@ -35,6 +37,8 @@ class Hdd:
         self.estimatedCompletionTime = datetime.datetime.now()
         self._smart = pySMART.Device(self.node)
         self.Port = None
+        self.CurrentTask = None
+        self.CurrentTaskStatus = Hdd.TASK_NONE
 
         #Check interface
         if(self._smart.interface != None):
@@ -125,8 +129,24 @@ class Hdd:
             self._smart._test_running = False
             self.estimatedCompletionTime = datetime.datetime.now()
 
+    def Erase(self):
+        if(self.CurrentTask == None):
+            self.CurrentTask = subprocess.Popen(['scrub', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            self.CurrentTaskStatus = Hdd.TASK_ERASING
+            return True #We started the task sucessfully
+        else:
+            return False #There is a task running on this hdd. cancel it first
+
     def GetTestProgressString(self):
         return str(self.testProgress) + "%"
+    
+    def GetTaskProgressString(self):
+        if(self.CurrentTaskStatus == Hdd.TASK_ERASING):
+            return "Erasing"
+        elif(self.CurrentTaskStatus == Hdd.TASK_NONE):
+            return "Idle"
+        else:
+            return "???"
 
     def _getRemainingTime(self):
         complete = self.estimatedCompletionTime
@@ -139,14 +159,32 @@ class Hdd:
             return s
         else:
             return "0:00:00"
+
     def UpdateSmart(self):
         self._smart.update()
         self.testProgress = self._smart._test_progress
         #print(self._smart._test_running)
 
+    def UpdateTask(self):
+        if(self.CurrentTaskStatus == Hdd.TASK_ERASING):
+            if(self.CurrentTask != None):
+                r = self.CurrentTask.poll()
+                if(r):
+                    if(r == 0):
+                        self.CurrentTaskStatus == Hdd.TASK_NONE
+                        self.CurrentTask = None
+                    else:
+                        pass #What do we do?
+            else:
+                self.CurrentTaskStatus == Hdd.TASK_NONE
+                
+                    
+                    
+
     def refresh(self):
         #status, testObj, remain = self._smart.get_selftest_result()
         #self._smart.update()
+
         if self._smart._test_running == True:
             self.testProgress = self._smart._test_progress
             if not (self.status == Hdd.STATUS_TESTING) or (self.status == Hdd.STATUS_LONGTST):
@@ -154,7 +192,6 @@ class Hdd:
             else:
                 pass
             
-        
         elif self._smart.assessment == 'PASS':
             self.status = Hdd.STATUS_PASSING
         elif self._smart.assessment == 'FAIL':

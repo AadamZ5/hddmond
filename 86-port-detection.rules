@@ -1,2 +1,2 @@
 #put in /etc/udev/rules.d/
-SUBSYSTEM=="block", KERNEL=="sd*", PROGRAM="/home/vuser/hdd-testing/portdetector.py %k $devpath" SYMLINK+="disk/by-port/%c"
+SUBSYSTEM=="block", KERNEL=="sd?", ACTION=="add" PROGRAM="/home/vuser/hdd-testing/portdetector.py %k $devpath $name" SYMLINK+="disk/by-port/%c"
