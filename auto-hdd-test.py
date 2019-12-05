@@ -280,7 +280,7 @@ class Application(object):
         #self.ListHeader = ui.Columns([(4, ui.Divider()), ('weight', 35, ui.Text("Serial")), ('weight', 25, ui.Text("Port")), ('weight',25, ui.Text("Node")), ('weight', 15, ui.Text("Task")), ('weight', 10, "Test stat"), ('weight', 25, ui.Divider())])
         #self.ListHeader = ui.Text("Temp")
         #self.border = ui.LineBox(ui.ListBox([self.ListHeader, self.ListView]))
-        self.boder = ui.LineBox(self.ListView)
+        self.border = ui.LineBox(self.ListView)
         self.HddList = ui.Frame(header=ui.Text("Harddrives", align='center', wrap='clip'), body=self.border)
 
         self.ShortTest = ui.Button("Short test", on_press=self.listModel.ShortTest)
