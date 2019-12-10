@@ -254,6 +254,10 @@ class Application(object):
         self.border = ui.LineBox(self.ListView)
         self.HddList = ui.Frame(header=ui.Text("Harddrives", align='center', wrap='clip'), body=self.border)
 
+        self.Terminal = ui.Terminal(['bash', '-c', 'htop'])
+        self.terminalBorder = ui.LineBox(self.Terminal)
+        self.Htop = ui.Frame(header=ui.Text("HTOP (Ctrl-A to escape)", align='center', wrap='clip'), body=self.terminalBorder)
+
         self.ShortTest = ui.Button("Short test", on_press=self.listModel.ShortTest)
         self.LongTest = ui.Button("Long test", on_press=self.listModel.LongTest)
         self.AbortTest = ui.Button("Abort test", on_press=self.listModel.AbortTest)
@@ -270,11 +274,19 @@ class Application(object):
 
         self.CommandCenter = ui.Pile([self.Controls, self.SubControls])
 
-        self.MainFrame = ui.Columns([('weight', 70, self.HddList), ('weight', 30, self.CommandCenter)], min_width=15)
+        self.ViewCenter = ui.Pile([self.HddList, self.Htop])
+
+        self.MainFrame = ui.Columns([('weight', 70, self.ViewCenter), ('weight', 30, self.CommandCenter)], min_width=15)
 
         self.loop = ui.MainLoop(ui.Filler(self.MainFrame, 'middle', 80), self.palette, pop_ups=True)
+        self.Terminal.main_loop = self.loop
         ui.connect_signal(self.listModel.hddEntries, 'modified', callback=self.listModel.updateUi, user_arg=self.loop)
+        ui.connect_signal(self.Terminal, 'closed', callback= self.reinitializeTerminal)
         self.loop.set_alarm_in(1, self.listModel.updateUi)
+        
+
+    def reinitializeTerminal(self, loop, **kwargs):
+        self.Terminal.touch_term(self.Terminal.width, self.Terminal.height)
 
     def reset_layout(self, button, t=None):
         #t should be (bool, callback) or None
