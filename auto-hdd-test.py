@@ -88,38 +88,6 @@ class HddWidget(ui.WidgetWrap):
     def _stateChanged(self, state: bool, udata):
         self._checked = state
         
-class Dialog(ui.WidgetWrap):
-    pass
-
-class PopupOk():
-    """A dialog that appears with nothing but a close button """
-    signals = ['close']
-    def __init__(self, text=[]):
-        close_button = ui.Button("that's pretty cool")
-        ui.connect_signal(close_button, 'click',
-            lambda button:self._emit("close"))
-        pile = ui.Pile([ui.Text(
-            "^^  I'm attached to the widget that opened me. "
-            "Try resizing the window!\n"), close_button])
-        fill = ui.Filler(pile)
-        super(PopupOk, self).__init__(ui.AttrWrap(fill, 'popbg'))
-
-
-class ButtonPopup(ui.PopUpLauncher):
-    def __init__(self):
-        super(ButtonPopup, self).__init__(ui.Button("click-me"))
-        ui.connect_signal(self.original_widget, 'click',
-            lambda button: self.open_pop_up())
-
-    def create_pop_up(self):
-        pop_up = PopupOk()
-        ui.connect_signal(pop_up, 'close',
-            lambda button: self.close_pop_up())
-        return pop_up
-
-    def get_pop_up_parameters(self):
-        return {'left':0, 'top':1, 'overlay_width':32, 'overlay_height':7}
-
 
 class ListModel:
     """
@@ -251,9 +219,11 @@ class Application(object):
         #keywd              #foregnd        "backgnd"
         (None,              'light gray',   'black'),
         ('heading',         'black',        'light gray'),
+        ('border',          'light gray',   'black'),
         ('line',            'black',        'light gray'),
         ('options',         'dark gray',    'black'),
         ('focus heading',   'white',        'dark red'),
+        ('focus border',    'light green',  'black'),
         ('focus line',      'black',        'dark red'),
         ('focus options',   'black',        'light gray'),
         ('selected',        'white',        'dark blue'),
@@ -269,6 +239,7 @@ class Application(object):
         
         self.focus_map = {
         'heading': 'focus heading',
+        'border': 'focus border', 
         'options': 'focus options',
         'line': 'focus line'}
 
@@ -287,8 +258,9 @@ class Application(object):
         self.LongTest = ui.Button("Long test", on_press=self.listModel.LongTest)
         self.AbortTest = ui.Button("Abort test", on_press=self.listModel.AbortTest)
         self.Erase = ui.Button("Erase disk", on_press=self.ShowAreYouSureDialog, user_data=[['Erase drives?'], self.listModel.EraseDisk])
+        self.Clone = ui.Button("Apply image", on_press=self.ShowErrorDialog, user_data=["Cloning is not supported yet."])
 
-        self.SubControls = ui.ListBox([self.ShortTest,self.LongTest,self.AbortTest, ui.Divider(), self.Erase])
+        self.SubControls = ui.ListBox([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, ui.Divider(), self.Clone])
         self.SubControls = ui.LineBox(self.SubControls)
         self.SubControls = ui.Frame(header=ui.Text("HDD Options", align="center", wrap="clip"), body=self.SubControls)
 
@@ -298,21 +270,24 @@ class Application(object):
 
         self.CommandCenter = ui.Pile([self.Controls, self.SubControls])
 
-        self.Master = ui.Columns([('weight', 70, self.HddList), ('weight', 30, self.CommandCenter)], min_width=15)
+        self.MainFrame = ui.Columns([('weight', 70, self.HddList), ('weight', 30, self.CommandCenter)], min_width=15)
 
-        self.loop = ui.MainLoop(ui.Filler(self.Master, 'middle', 80), self.palette, pop_ups=True)
+        self.loop = ui.MainLoop(ui.Filler(self.MainFrame, 'middle', 80), self.palette, pop_ups=True)
         ui.connect_signal(self.listModel.hddEntries, 'modified', callback=self.listModel.updateUi, user_arg=self.loop)
         self.loop.set_alarm_in(1, self.listModel.updateUi)
 
     def reset_layout(self, button, t=None):
         #t should be (bool, callback) or None
 
-        self.loop.widget = self.Master
+        self.loop.widget = self.MainFrame
 
-        if(t):
-            if(len(t) > 1):
-                if(t[0]):
-                    t[1]()
+        if(t): #t != None
+            if(type(t) == tuple):
+                if(len(t) > 1):
+                    if(t[0]): #if bool is true
+                        t[1]() #call callback
+            else:
+                pass
 
     def exit(self, button, args=None):
         self.ShowExitDialog(None)
@@ -350,7 +325,7 @@ class Application(object):
 
         w = ui.Overlay(
             ui.LineBox(layout),
-            self.Master,
+            self.MainFrame,
             align = 'center',
             width = 40,
             valign = 'middle',
@@ -367,7 +342,7 @@ class Application(object):
 
         # Body
         body_text = ui.Text(text, align = 'center')
-        body_filler = ui.Filler(body_text, valign = 'top')
+        body_filler = ui.Filler(body_text, valign = 'middle')
         body_padding = ui.Padding(
             body_filler,
             left = 1,
@@ -390,7 +365,7 @@ class Application(object):
 
         w = ui.Overlay(
             ui.LineBox(layout),
-            self.Master,
+            self.MainFrame,
             align = 'center',
             width = 40,
             valign = 'middle',
@@ -401,7 +376,7 @@ class Application(object):
 
     def ShowAreYouSureDialog(self, button, args = []):
         
-        #args is a [['Text', 'lines'], callback]
+        #args is a [['Line1', 'Line2'], callback]
         text = args[0]
         
         callback = None
@@ -440,7 +415,7 @@ class Application(object):
 
         w = ui.Overlay(
             ui.LineBox(layout),
-            self.Master,
+            self.MainFrame,
             align = 'center',
             width = 40,
             valign = 'middle',
