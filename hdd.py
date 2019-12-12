@@ -1,7 +1,6 @@
 import pyudev
 import pySMART
 import time
-import multiprocessing
 import subprocess
 import datetime
 import pciaddress
@@ -39,6 +38,7 @@ class Hdd:
         self.Port = None
         self.CurrentTask = None
         self.CurrentTaskStatus = Hdd.TASK_NONE
+        self.Size = self._smart.capacity
 
         #Check interface
         if(self._smart.interface != None):
@@ -174,7 +174,9 @@ class Hdd:
                         self.CurrentTaskStatus == Hdd.TASK_NONE
                         self.CurrentTask = None
                     else:
-                        pass #What do we do?
+                        pass #What do we do if there is an error?
+                else:
+                    pass
             else:
                 self.CurrentTaskStatus == Hdd.TASK_NONE
                 

@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import os
 import subprocess
+import proc
 import pyudev
 from pySMART import Device
 import re
@@ -29,9 +30,9 @@ for device in context.list_devices(subsystem='block'):
         print()
 
 
-
 def exit_program():
     app.stop()
+    os.system('clear')
     raise ui.ExitMainLoop()
 
 
@@ -45,10 +46,11 @@ class HddWidget(ui.WidgetWrap):
         #self._pci = ui.Text(str(self.hdd.OnPciAddress), align='center')
         self._task = ui.Text((self.hdd.CurrentTaskStatus, self.hdd.GetTaskProgressString()), align='center')
         self._port = ui.Text(str(self.hdd.Port), align='center')
-        self._stat = ui.Text((self.hdd.status, self.hdd._smart.assessment), align='center')
+        self._cap = ui.Text(str(self.hdd.Size), align='center')
+        self._stat = ui.Text((self.hdd.status, str(self.hdd._smart.assessment)), align='center')
         self._check = ui.CheckBox('', state=self._checked, on_state_change=self._stateChanged)
         self._more = ui.Button("Info")
-        self._col = ui.Columns([(4,self._check), ('weight', 35, self._id), ('weight', 25, self._port), ('weight', 25, self._node), ('weight', 15, self._task), ('weight', 10, self._stat), ('weight', 25, self._more)])
+        self._col = ui.Columns([(4,self._check), ('weight', 35, self._id), ('weight', 20, self._port), ('weight', 20, self._cap), ('weight', 25, self._node), ('weight', 15, self._task), ('weight', 10, self._stat), ('weight', 25, self._more)])
         self._pad = ui.Padding(self._col, align='center', left=2, right=2)
         super(HddWidget, self).__init__(self._pad)
     
@@ -143,9 +145,9 @@ class ListModel:
             for hdd in list(self.hdds.keys()):
                 if(hdd.status == Hdd.STATUS_LONGTST) or (hdd.status == Hdd.STATUS_TESTING):
                     hdd.UpdateSmart()
-                if(hdd.CurrentTaskStatus == Hdd.TASK_ERASING):
+                if(hdd.CurrentTaskStatus != Hdd.TASK_NONE):
                     hdd.UpdateTask()
-            time.sleep(1.5)
+            time.sleep(5)
 
     def updateDevices(self, bootNode: str):
         """
@@ -172,6 +174,8 @@ class ListModel:
                 h.Port = self.PortDetector.GetPort(h._udev.sys_path, h.OnPciAddress, h.serial)
                 self.addHdd(h)
                 print("Added /dev/"+d.name)
+
+        
             
     def addHdd(self, hdd: Hdd):
         hddWdget = HddWidget(hdd)
@@ -264,19 +268,15 @@ class Application(object):
         self.Erase = ui.Button("Erase disk", on_press=self.ShowAreYouSureDialog, user_data=[['Erase drives?'], self.listModel.EraseDisk])
         self.Clone = ui.Button("Apply image", on_press=self.ShowErrorDialog, user_data=["Cloning is not supported yet."])
 
-        self.SubControls = ui.ListBox([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, ui.Divider(), self.Clone])
+        self.SubControls = ui.ListBox([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, ui.Divider(), self.Clone, ui.Divider(), ui.Button("Exit", on_press=self.exit)])
         self.SubControls = ui.LineBox(self.SubControls)
         self.SubControls = ui.Frame(header=ui.Text("HDD Options", align="center", wrap="clip"), body=self.SubControls)
 
-        self.Controls = ui.ListBox([ui.Button("Exit", on_press=self.exit)])
-        self.Controls = ui.LineBox(self.Controls)
-        self.Controls = ui.Frame(header=ui.Text("Options", align='center', wrap='clip'), body=self.Controls)
+        self.Top = ui.Columns([('weight', 70, self.HddList), ('weight', 30, self.SubControls)], min_width=15)
 
-        self.CommandCenter = ui.Pile([self.Controls, self.SubControls])
+        self.ViewCenter = ui.Pile([self.Top, self.Htop])
 
-        self.ViewCenter = ui.Pile([self.HddList, self.Htop])
-
-        self.MainFrame = ui.Columns([('weight', 70, self.ViewCenter), ('weight', 30, self.CommandCenter)], min_width=15)
+        self.MainFrame = self.ViewCenter
 
         self.loop = ui.MainLoop(ui.Filler(self.MainFrame, 'middle', 80), self.palette, pop_ups=True)
         self.Terminal.main_loop = self.loop
