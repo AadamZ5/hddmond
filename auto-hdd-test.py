@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 import os
 import subprocess
-import proc
+import proc.core
 import pyudev
 from pySMART import Device
 import re
@@ -29,13 +29,11 @@ for device in context.list_devices(subsystem='block'):
     else:
         print()
 
-
-def exit_program():
-    app.stop()
-    os.system('clear')
-    raise ui.ExitMainLoop()
-
-
+def logwrite(s:str, endl='\n'):
+    fd = open("./main.log", 'a')
+    fd.write(s)
+    fd.write(endl)
+    fd.close()
 
 class HddWidget(ui.WidgetWrap):
     def __init__(self, hdd: Hdd):
@@ -108,6 +106,8 @@ class ListModel:
         self.PortDetector = portdetection.PortDetection()
         self.updateDevices(bootDiskNode)
         self._loopgo = True
+        self._forked = False
+        self.stuffRunning = False
         self.updateThread = threading.Thread(target=self._updateLoop)
         self.updateThread.start()
 
@@ -141,12 +141,31 @@ class ListModel:
                 hw.Erase()
 
     def _updateLoop(self):
+        '''
+        This loop should be run in a separate thread.
+        '''
         while self._loopgo:
+            busy = False
             for hdd in list(self.hdds.keys()):
-                if(hdd.status == Hdd.STATUS_LONGTST) or (hdd.status == Hdd.STATUS_TESTING):
-                    hdd.UpdateSmart()
-                if(hdd.CurrentTaskStatus != Hdd.TASK_NONE):
-                    hdd.UpdateTask()
+                if(hdd.status == Hdd.STATUS_LONGTST) or (hdd.status == Hdd.STATUS_TESTING): #If we're testing, queue the smart data to update the progress
+                    try:
+                        hdd.UpdateSmart()
+                    except Excpetion as e:
+                        logwrite("Exception raised!:" + str(e))
+                    busy = True
+                if(hdd.CurrentTaskStatus != Hdd.TASK_NONE): #If there is a task operating on the drive's data
+                    try:
+                        hdd.UpdateTask()
+                    except Excpetion as e:
+                        logwrite("Exception raised!:" + str(e))
+                    busy = True
+            self.stuffRunning = busy
+            logwrite("Stuff running:" + str(self.stuffRunning))
+            logwrite("Forked: " + str(self._forked))
+            if(self._forked):
+                if(self.stuffRunning == False):
+                    self._loopgo = False
+                    self.exit(0)
             time.sleep(5)
 
     def updateDevices(self, bootNode: str):
@@ -175,9 +194,25 @@ class ListModel:
                 self.addHdd(h)
                 print("Added /dev/"+d.name)
 
-        
+    def finishInBackground(self, *args, **kwargs):
+        try:
+            pid = os.fork()
+            if pid > 0:
+                return #Go do other work, preferrably exit.
+        except OSError as e:
+            logwrite("fork failed: %d (%s)" % (e.errno, e.strerror))
+            sys.exit(1)
+        #os.chdir("/")
+        os.setsid() #Set a new ssid and dissociate from other program
+        #os.umask(0)
+        raise ui.ExitMainLoop() #Stop the UI bs from running on this process
+        self._forked = True
+        self.observer.stop() #Stop accepting new udev devices. We want to finish our current work and exit
+        self.updateThread.join()
+
             
     def addHdd(self, hdd: Hdd):
+        hdd.CurrentTask = self.findProcAssociated(hdd.node)
         hddWdget = HddWidget(hdd)
         self.hdds.update({hdd: hddWdget})
         self.hddEntries.append(hddWdget)
@@ -206,6 +241,8 @@ class ListModel:
                 break
 
     def deviceAdded(self, action, device: pyudev.Device):
+        if(self._forked == True):
+            return
         if(action == 'add') and (device != None):
             hdd = Hdd.FromUdevDevice(device)
             self.PortDetector.Update()
@@ -215,6 +252,12 @@ class ListModel:
         elif(action == 'remove') and (device != None):
             self.removeHddStr(device.device_node)
 
+    def findProcAssociated(self, node):
+        plist = proc.core.find_processes()
+        for p in plist:
+            if node in p.cmdline:
+                return p
+        return None
 
 class Application(object):
     def __init__(self):
@@ -239,7 +282,8 @@ class Application(object):
         (Hdd.STATUS_UNKNOWN, 'light gray', 'dark red'),
         (Hdd.STATUS_LONGTST, 'light magenta', 'black'),
         (Hdd.TASK_ERASING, 'light cyan', 'black'),
-        (Hdd.TASK_NONE, 'dark gray', 'black')]
+        (Hdd.TASK_NONE, 'dark gray', 'black'),
+        (Hdd.TASK_EXTERNAL, 'dark blue', 'black')]
         
         self.focus_map = {
         'heading': 'focus heading',
@@ -268,15 +312,13 @@ class Application(object):
         self.Erase = ui.Button("Erase disk", on_press=self.ShowAreYouSureDialog, user_data=[['Erase drives?'], self.listModel.EraseDisk])
         self.Clone = ui.Button("Apply image", on_press=self.ShowErrorDialog, user_data=["Cloning is not supported yet."])
 
-        self.SubControls = ui.ListBox([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, ui.Divider(), self.Clone, ui.Divider(), ui.Button("Exit", on_press=self.exit)])
+        self.SubControls = ui.ListBox([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, ui.Divider(), self.Clone, ui.Divider(), ui.Button("Exit", on_press=self.ShowAreYouSureDialog, user_data=[['Are you sure you want to exit?'], self.check_running])])
         self.SubControls = ui.LineBox(self.SubControls)
         self.SubControls = ui.Frame(header=ui.Text("HDD Options", align="center", wrap="clip"), body=self.SubControls)
 
         self.Top = ui.Columns([('weight', 70, self.HddList), ('weight', 30, self.SubControls)], min_width=15)
 
-        self.ViewCenter = ui.Pile([self.Top, self.Htop])
-
-        self.MainFrame = self.ViewCenter
+        self.MainFrame = ui.Pile([self.Top, self.Htop])
 
         self.loop = ui.MainLoop(ui.Filler(self.MainFrame, 'middle', 80), self.palette, pop_ups=True)
         self.Terminal.main_loop = self.loop
@@ -290,23 +332,37 @@ class Application(object):
 
     def reset_layout(self, button, t=None):
         #t should be (bool, callback) or None
-
+        self.MainFrame = ui.Pile([self.Top, self.Htop])
         self.loop.widget = self.MainFrame
 
         if(t): #t != None
             if(type(t) == tuple):
                 if(len(t) > 1):
                     if(t[0]): #if bool is true
-                        t[1]() #call callback
+                        if(t[1]):
+                            t[1]() #true callback
+                    else:
+                        if(t[2]):
+                            t[2]() #false callback
             else:
                 pass
 
-    def exit(self, button, args=None):
-        self.ShowExitDialog(None)
-        self.loop.draw_screen()
-        exit_program()
+    def check_running(self, button=None, args=None):
+        if(self.listModel.stuffRunning == True):
+            self.ShowYesNoDialog(args=[['There are tasks currently running.', 'Finish tasks in background?', 'Task running: ' + str(self.listModel.stuffRunning)], self.bgexit, self.exit])
+        else:
+            self.exit()
 
-    def ShowExitDialog(self, button):
+    def bgexit(self, *args, **kwargs):
+        self.listModel.finishInBackground()
+        self.exit()
+
+    def exit(self, button=None, args=None):
+        self.ShowExitDialog()
+        self.loop.draw_screen()
+        self.stop()
+
+    def ShowExitDialog(self, button=None):
 
         # Header
         header_text = ui.Text(('banner', 'Please wait'), align = 'center')
@@ -337,16 +393,17 @@ class Application(object):
 
         w = ui.Overlay(
             ui.LineBox(layout),
-            self.MainFrame,
+            self.Top,
             align = 'center',
             width = 40,
             valign = 'middle',
             height = 10
         )
 
-        self.loop.widget = w
+        self.MainFrame = ui.Pile([w, self.Htop])
+        self.loop.widget = self.MainFrame
 
-    def ShowErrorDialog(self, button, text = ['']):
+    def ShowErrorDialog(self, button=None, text = ['']):
 
         # Header
         header_text = ui.Text(('banner', 'Error'), align = 'center')
@@ -377,16 +434,68 @@ class Application(object):
 
         w = ui.Overlay(
             ui.LineBox(layout),
-            self.MainFrame,
+            self.Top,
             align = 'center',
             width = 40,
             valign = 'middle',
             height = 10
         )
 
-        self.loop.widget = w
+        self.MainFrame = ui.Pile([w, self.Htop])
+        self.loop.widget = self.MainFrame
 
-    def ShowAreYouSureDialog(self, button, args = []):
+    def ShowYesNoDialog(self, button=None, args = []):
+        
+        #args is a [['Line1', 'Line2'], callback]
+        text = args[0]
+        
+        callback = None
+        if(len(args) > 1):
+            yescallback = args[1]
+            nocallback = args[2]
+
+        # Header
+        header_text = ui.Text(('banner', 'Choose an option'), align = 'center')
+        header = ui.AttrMap(header_text, 'banner')
+
+        # Body
+        body_text = ui.Text(text, align = 'center')
+        body_filler = ui.Filler(body_text, valign = 'middle')
+        body_padding = ui.Padding(
+            body_filler,
+            left = 1,
+            right = 1
+        )
+        body = ui.LineBox(body_padding)
+
+        # Footer
+        yes = ui.Button('Yes', self.reset_layout, user_data=(True, yescallback, nocallback))
+        yes = ui.AttrWrap(yes, 'selectable', 'focus')
+        no = ui.Button('No', self.reset_layout, user_data=(False, yescallback, nocallback))
+        no = ui.AttrWrap(no, 'selectable', 'focus')
+        footer = ui.Columns([yes, no])
+        footer = ui.GridFlow([footer], 20, 1, 1, 'center')
+
+        # Layout
+        layout = ui.Frame(
+            body,
+            header = header,
+            footer = footer,
+            focus_part = 'footer'
+        )
+
+        w = ui.Overlay(
+            ui.LineBox(layout),
+            self.Top,
+            align = 'center',
+            width = 40,
+            valign = 'middle',
+            height = 10
+        )
+        self.MainFrame = ui.Pile([w, self.Htop])
+        self.loop.widget = self.MainFrame
+
+    def ShowAreYouSureDialog(self, button=None, args = []):
         
         #args is a [['Line1', 'Line2'], callback]
         text = args[0]
@@ -427,21 +536,23 @@ class Application(object):
 
         w = ui.Overlay(
             ui.LineBox(layout),
-            self.MainFrame,
+            self.Top,
             align = 'center',
             width = 40,
             valign = 'middle',
             height = 10
         )
-
-        self.loop.widget = w
+        self.MainFrame = ui.Pile([w, self.Htop])
+        self.loop.widget = self.MainFrame
 
     def start(self):
         self.loop.run()
 
     def stop(self):
         self.listModel.stop()
-        ui.ExitMainLoop()
+        os.system('clear')
+        raise ui.ExitMainLoop()
+        exit(0)
 
 
 

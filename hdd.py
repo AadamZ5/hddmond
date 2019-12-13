@@ -4,6 +4,13 @@ import time
 import subprocess
 import datetime
 import pciaddress
+import proc.core
+
+def logwrite(s:str, endl='\n'):
+    fd = open("./hdds.log", 'a')
+    fd.write(s)
+    fd.write(endl)
+    fd.close()
 
 
 class Hdd:
@@ -19,6 +26,7 @@ class Hdd:
     STATUS_UNKNOWN = 'unknownhdd'
     TASK_ERASING = 'taskerase'
     TASK_NONE = 'tasknone'
+    TASK_EXTERNAL = 'taskextern'
 
     
 
@@ -131,7 +139,7 @@ class Hdd:
 
     def Erase(self):
         if(self.CurrentTask == None):
-            self.CurrentTask = subprocess.Popen(['scrub', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            self.CurrentTask = subprocess.Popen(['scrub', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=True)
             self.CurrentTaskStatus = Hdd.TASK_ERASING
             return True #We started the task sucessfully
         else:
@@ -145,6 +153,9 @@ class Hdd:
             return "Erasing"
         elif(self.CurrentTaskStatus == Hdd.TASK_NONE):
             return "Idle"
+        elif(self.CurrentTaskStatus == Hdd.TASK_EXTERNAL):
+            if(type(self.CurrentTask) == proc.core.Process):
+                return str(self.CurrentTask.comm)
         else:
             return "???"
 
@@ -166,6 +177,11 @@ class Hdd:
         #print(self._smart._test_running)
 
     def UpdateTask(self):
+        if(self.CurrentTaskStatus != Hdd.TASK_NONE):
+            logwrite(str(self.serial) + ": Task running! Task type: " + self.CurrentTaskStatus)
+        else:
+            logwrite(str(self.serial) + ": No task running.")
+        
         if(self.CurrentTaskStatus == Hdd.TASK_ERASING):
             if(self.CurrentTask != None):
                 r = self.CurrentTask.poll()
@@ -176,9 +192,18 @@ class Hdd:
                     else:
                         pass #What do we do if there is an error?
                 else:
-                    pass
+                    logwrite("Task running: " + str(self.CurrentTask.pid))
             else:
                 self.CurrentTaskStatus == Hdd.TASK_NONE
+        elif(self.CurrentTaskStatus == Hdd.TASK_EXTERNAL):
+            if(type(self.CurrentTask) == proc.core.Process):
+                if(self.CurrentTask.is_alive):
+                    pass
+                else:
+                    self.CurrentTask = None
+                    self.CurrentTaskStatus = Hdd.TASK_NONE
+        else:
+            pass
                 
                     
                     
