@@ -1,0 +1,7 @@
+[Unit]
+Description=hddmon daemon that keeps track of attached hard drives.
+
+[Service]
+ExecStart=/usr/bin/hddmon/hddmon-daemon.py
+Restart=on-failure
+

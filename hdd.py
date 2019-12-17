@@ -6,12 +6,13 @@ import datetime
 import pciaddress
 import proc.core
 
+debug = False
 def logwrite(s:str, endl='\n'):
-    fd = open("./hdds.log", 'a')
-    fd.write(s)
-    fd.write(endl)
-    fd.close()
-
+    if debug:
+        fd = open("./hdds.log", 'a')
+        fd.write(s)
+        fd.write(endl)
+        fd.close()
 
 class Hdd:
     """
@@ -28,7 +29,23 @@ class Hdd:
     TASK_NONE = 'tasknone'
     TASK_EXTERNAL = 'taskextern'
 
-    
+    def __getstate__(self):
+        # Copy the object's state from self.__dict__ which contains
+        # all our instance attributes. Always use the dict.copy()
+        # method to avoid modifying the original state.
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries. Udev references CDLL which won't pickle.
+        del state['_udev']
+        del state['CurrentTask']
+        return state
+
+    def __setstate__(self, state):
+        # Restore instance attributes (i.e., filename and lineno).
+        self.__dict__.update(state)
+        # Restore the udev link
+        self._udev = pyudev.Devices.from_device_file(pyudev.Context(), self.node)
+        self.CurrentTask = None
+        
 
     def __init__(self, node: str):
         '''
@@ -231,3 +248,25 @@ class Hdd:
             return self.serial
         else:
             return "???"
+
+class HddViewModel:
+    def __init__(self, serial=None, node=None, pciAddress=None, status=None, taskStatus=None, taskString=None, testProgress=None, port=None, size=None, isSsd=None, smartResult=None):
+        self.serial=serial
+        self.node=node
+        self.pciAddress=pciAddress
+        self.status=status
+        self.taskStatus=taskStatus
+        self.taskString=taskString
+        self.testProgress=testProgress
+        self.port=port
+        self.size=size
+        self.isSsd=isSsd
+        self.smartResult=smartResult
+
+    @staticmethod
+    def FromHdd(h: Hdd):
+        logwrite(str(h))
+        hvm = HddViewModel(serial=h.serial, node=h.node, pciAddress=h.OnPciAddress, status=h.status, testProgress=h.GetTestProgressString(), taskStatus=h.CurrentTaskStatus, taskString=h.GetTaskProgressString(), port=h.Port, size=h.Size, isSsd=h._smart.is_ssd)
+        hvm.smartResult = h._smart.__dict__.get('assessment', h._smart.__dict__.get('smart_status', None)) #Pickling mixup https://github.com/freenas/py-SMART/issues/23
+        logwrite("\t" + hvm.status)
+        return hvm
