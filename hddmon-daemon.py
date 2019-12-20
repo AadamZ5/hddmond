@@ -59,7 +59,6 @@ class ListModel:
 
         self.serverAddress = ('localhost', 63962)
         self.server = ipc.Listener(address=self.serverAddress, authkey=b'H4789HJF394615R3DFESZFEZCDLPOQ')
-        self.serverThread = threading.Thread(target=self.serverLoop)
 
         self.clientlist = [] #list of (client, addr)
         
@@ -69,6 +68,7 @@ class ListModel:
             for h in self.hdds:
                 if h.serial == s:
                     h.Erase()
+                    print("Started erase on " + str(h.serial) + " with PID " + str(h.CurrentTask.pid))
                     break;
 
         return True
@@ -105,6 +105,7 @@ class ListModel:
         return False
 
     def serverLoop(self):
+        print("Server running")
         while self._loopgo:
             client = self.server.accept()
             clientAddress = str(self.server.last_accepted)
@@ -176,23 +177,13 @@ class ListModel:
                             client.send('error')
 
                     elif command == 'image':
-                        pass #Complicated logic response
+                        client.send('error')
                     elif command == 'listen':
-                        while True:
-                            client.send(list(self.hdds))
-                            try:
-                                lmsg = client.recv()#blocking call
-                            except EOFError as e:
-                                print("Pipe unexpectedly closed:\n" + str(e))
-                                lmsg = None
-                                del client
-                                break
-
-                            if(lmsg != 'again'):
-                                futuremsg = lmsg
-                                break
-                            else:
-                                time.sleep(1)
+                        print("Sent: " + str(self.hdds))
+                        if(len(self.hdds) == 0):
+                            client.send(None)
+                        else:
+                            client.send(self.hdds)
 
                     else:
                         pass #Unknown command
@@ -206,42 +197,38 @@ class ListModel:
         self._loopgo = False
         self.updateThread.join()
 
-    def ShortTest(self, button=None):
-        for hw in self.hddEntries:
-            if(hw.checked):
-                hw.ShortTest()
-
-    def LongTest(self, button=None):
-        for hw in self.hddEntries:
-            if(hw.checked):
-                hw.LongTest()
-        
-    def AbortTest(self, button=None):
-        for hw in self.hddEntries:
-            if(hw.checked):
-                hw.AbortTest()
-
-    def EraseDisk(self, button=None):
-        for hw in self.hddEntries:
-            if(hw.checked):
-                hw.Erase()
-
     def updateLoop(self):
         '''
         This loop should be run in a separate thread.
         '''
+        print("Update thread running")
+        smart_coldcall_interval = 30.0 #seconds
+        smart_last_coldcall = time.time()
         while self._loopgo:
             busy = False
             for hdd in self.hdds:
                 if(hdd.status == Hdd.STATUS_LONGTST) or (hdd.status == Hdd.STATUS_TESTING): #If we're testing, queue the smart data to update the progress
                     try:
                         hdd.UpdateSmart()
+                        print("\tTEST:" + str(hdd.CurrentTask))
                     except Exception as e:
                         logwrite("Exception raised!:" + str(e))
+                        print("Exception raised!:" + str(e))
                     busy = True
+                else:
+                    if(time.time() - smart_last_coldcall > smart_coldcall_interval):
+                        smart_last_coldcall = time.time()
+                        try:
+                            hdd.UpdateSmart()
+                        except Exception as e:
+                            logwrite("Exception raised!:" + str(e))
+                            print("Exception raised!:" + str(e))
+
+                
                 if(hdd.CurrentTaskStatus != Hdd.TASK_NONE): #If there is a task operating on the drive's data
                     try:
                         hdd.UpdateTask()
+                        print("\tTASK:" + str(hdd.CurrentTask) + " (" + str(hdd.CurrentTask.pid) + ", " + str(hdd.CurrentTaskStatus) + ", " + str(hdd.CurrentTaskReturnCode) + ")")
                     except Exception as e:
                         logwrite("Exception raised!:" + str(e))
                     busy = True
@@ -279,34 +266,30 @@ class ListModel:
             
     def addHdd(self, hdd: Hdd):
         hdd.CurrentTask = self.findProcAssociated(hdd.node)
+        hdd.refresh()
         self.hdds.append(hdd)
-        #hddWdget.ShortTest()
+        #hdd.ShortTest()
 
     def removeHddHdd(self, hdd: Hdd):
-        for h in self.hdds.keys():
+        for h in self.hdds:
             if (h.node == hdd.node):
-                removeWidget = self.hdds[h]
                 try:
-                    del self.hdds[h]
+                    self.hdds.remove(h)
                 except KeyError as e:
-                    pass
-                self.hddEntries.remove(removeWidget)
+                    print("Error removing hdd by hdd!:\n" + str(e))
                 break
     
     def removeHddStr(self, node: str):
-        for h in self.hdds.keys():
+        for h in self.hdds:
             if (h.node == node):
-                removeWidget = self.hdds[h]
                 try:
-                    del self.hdds[h]
+                    self.hdds.remove(h)
                 except KeyError as e:
-                    pass
-                self.hddEntries.remove(removeWidget)
+                    print("Error removing hdd by node!:\n" + str(e))
                 break
 
     def deviceAdded(self, action, device: pyudev.Device):
-        if(self._forked == True):
-            return
+        print("Udev: " + str(action) + " " + str(device))
         if(action == 'add') and (device != None):
             hdd = Hdd.FromUdevDevice(device)
             self.PortDetector.Update()
@@ -324,10 +307,8 @@ class ListModel:
         return None
 
     def start(self):
-        self.serverThread.start()
-        print("Server running")
         self.updateThread.start()
-        print("Update thread running")
+        self.serverLoop()
 
 if __name__ == '__main__':
     hd = ListModel()

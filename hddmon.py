@@ -22,14 +22,30 @@ def logwrite(s:str, endl='\n'):
         fd.write(endl)
         fd.close()
 
+
 class HddInfo(ui.WidgetWrap):
-    def __init__(self, hdd: HddViewModel):
-        super(HddWidget, self).__init__(self._pad)
+    def __init__(self, hdd: Hdd, app):
+        self.hdd = hdd
+        self.__app__ = app
+        self._title = ui.Text("HDD Info")
+        self._tests = ui.SimpleFocusListWalker(hdd._smart.tests)
+        self._teststree = ui.TreeListBox(self._tests)
+        self._exit = ui.Button("Exit", on_press=self.exit)
+        self._main = ui.Frame(self._teststree, header=self._title)
+        super(HddInfo, self).__init__(self._title)
+
+    def show(self, *args, **kwargs):
+        self._oldw = self.__app__.loop.widget
+        self.__app__.loop.widget = self
+
+    def exit(self, *args, **kwargs):
+        self.__app__.loop.widget = self._oldw
 
 
 class HddWidget(ui.WidgetWrap):
-    def __init__(self, hdd: HddViewModel):
+    def __init__(self, hdd: HddViewModel, app):
         self.hdd = hdd
+        self.__app__ = app
         self._checked = False
         self._id = ui.Text((self.hdd.status, str(self.hdd.serial)), align='left')
         self._node = ui.Text(self.hdd.node, align='center')
@@ -37,9 +53,12 @@ class HddWidget(ui.WidgetWrap):
         self._task = ui.Text((self.hdd.taskStatus, self.hdd.taskString), align='center')
         self._port = ui.Text(str(self.hdd.port), align='center')
         self._cap = ui.Text(str(self.hdd.size), align='center')
+        if(self.hdd.isSsd):
+            self._cap.set_text(str(hdd.size) + " SSD")
         self._stat = ui.Text((self.hdd.status, self.hdd.smartResult), align='center')
-        self._check = ui.CheckBox('', state=self._checked, on_state_change=self._stateChanged)
-        self._more = ui.Button("Info")
+        self._check = ui.CheckBox('', state=self._checked)
+        self._more = ui.Button("Info", on_press=self.ShowInfo)
+
         self._col = ui.Columns([(4,self._check), ('weight', 35, self._id), ('weight', 20, self._port), ('weight', 20, self._cap), ('weight', 25, self._node), ('weight', 15, self._task), ('weight', 10, self._stat), ('weight', 25, self._more)])
         self._pad = ui.Padding(self._col, align='center', left=2, right=2)
         self.Update(self.hdd)
@@ -58,12 +77,18 @@ class HddWidget(ui.WidgetWrap):
         else:
             self._stat.set_text((self.hdd.status, str(self.hdd.smartResult)))
         
-        if(self.hdd.taskStatus == Hdd.TASK_ERASING):
+        if(self.hdd.taskStatus != Hdd.TASK_NONE):
             self._task.set_text((self.hdd.taskStatus, self.hdd.taskString))
             self._cap.set_text((self.hdd.taskStatus, self.hdd.size))
+        elif(self.hdd.taskStatus == Hdd.TASK_NONE):
+            self._task.set_text((self.hdd.taskStatus, self.hdd.taskString))
+            self._cap.set_text(self.hdd.size)
 
-    def _stateChanged(self, state: bool, udata):
-        self._checked = state
+    def ShowInfo(self, *args, **kwargs):
+        h = (h.serial for h in self.__app__.hddobjs)
+        if h:
+            hinfo = HddInfo(h, self.__app__)
+
 
 class Application(object):
     def __init__(self):
@@ -89,7 +114,8 @@ class Application(object):
         (Hdd.STATUS_LONGTST, 'light magenta', 'black'),
         (Hdd.TASK_ERASING, 'light cyan', 'black'),
         (Hdd.TASK_NONE, 'dark gray', 'black'),
-        (Hdd.TASK_EXTERNAL, 'dark blue', 'black')]
+        (Hdd.TASK_EXTERNAL, 'dark blue', 'black'),
+        (Hdd.TASK_ERROR, 'dark red', 'black')]
         
         self.focus_map = {
         'heading': 'focus heading',
@@ -98,7 +124,7 @@ class Application(object):
         'line': 'focus line'}
 
         self.commandQueue = [] #format (command, serials, extradata, callback)
-
+        self.hddobjs = []
         self.hddEntries = ui.SimpleListWalker([])
         self.ListView = ui.ListBox(self.hddEntries)
 
@@ -178,10 +204,12 @@ class Application(object):
     def processHddData(self, hdds):
         logwrite("Checking!!!")
         logwrite("List: " + str(hdds))
+        self.hddobjs = hdds
         localhdds = list(hdds).copy()
         foundhdds = []
 
         for hw in self.hddEntries:#look for hdds in here.
+
             logwrite("Checking " + str(hw.hdd.serial))
             found = False
             for h in localhdds:
@@ -194,7 +222,8 @@ class Application(object):
                     found = True
                     break 
             
-            if not found: #Found = false, remove the widget.
+            if found == False: #Found = false, remove the widget.
+                logwrite("Removed " + str(hw.hdd.serial))
                 self.hddEntries.remove(hw)
         
         logwrite("Found HDDs: " + str(foundhdds))
@@ -206,12 +235,12 @@ class Application(object):
         logwrite("Leftover HDDs: " + str(localhdds))
         for hrem in localhdds: #Process the leftover hdds for which we didn't have a widget currently representing
             hvm = HddViewModel.FromHdd(hrem)
-            hddwidget = HddWidget(hvm)
+            hddwidget = HddWidget(hvm, self)
             self.hddEntries.append(hddwidget)
 
     
     def daemonComm(self, me=None):
-        while self.daemonCommGo:
+        while self.daemonCommGo and ('me' in locals()):
             if(len(self.commandQueue) == 0):
                 me.send(('listen', None, None))
                 try:
@@ -221,8 +250,17 @@ class Application(object):
                     data = None
                     del me
                     break
+                except FileNotFoundError as e:
+                    self.ShowErrorDialog(text=["Server sent a device that doesnt exist:\n", str(e)])
+                    data = None
+                except pyudev.DeviceNotFoundByFileError as e:
+                    self.ShowErrorDialog(text=["Server sent a device that doesnt exist:\n", str(e)])
+                    data = None
+                except Exception as e:
+                    self.ShowErrorDialog(text=["Error\n", str(e)])
+                    data = None
                 if(data):
-                    #print(str(data))
+                    logwrite("Got data: " + str(data))
                     self.processHddData(data)
             else:
                 t = self.commandQueue.pop()
@@ -239,10 +277,10 @@ class Application(object):
                     data = None
                     del me
                     break
-                if(data):
-                    if(data == True):
-                        if(callback):
-                            callback(data)
+                if(data != None):
+                    if(callback):
+                        callback(data)
+                        
             time.sleep(1)
         try:
             me.close()

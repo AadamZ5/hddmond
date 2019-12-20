@@ -28,6 +28,7 @@ class Hdd:
     TASK_ERASING = 'taskerase'
     TASK_NONE = 'tasknone'
     TASK_EXTERNAL = 'taskextern'
+    TASK_ERROR = 'taskerror'
 
     def __getstate__(self):
         # Copy the object's state from self.__dict__ which contains
@@ -63,6 +64,7 @@ class Hdd:
         self.Port = None
         self.CurrentTask = None
         self.CurrentTaskStatus = Hdd.TASK_NONE
+        self.CurrentTaskReturnCode = None
         self.Size = self._smart.capacity
 
         #Check interface
@@ -156,7 +158,7 @@ class Hdd:
 
     def Erase(self):
         if(self.CurrentTask == None):
-            self.CurrentTask = subprocess.Popen(['scrub', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=True)
+            self.CurrentTask = subprocess.Popen(['scrub', '-f', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             self.CurrentTaskStatus = Hdd.TASK_ERASING
             return True #We started the task sucessfully
         else:
@@ -173,6 +175,8 @@ class Hdd:
         elif(self.CurrentTaskStatus == Hdd.TASK_EXTERNAL):
             if(type(self.CurrentTask) == proc.core.Process):
                 return str(self.CurrentTask.comm)
+        elif(self.CurrentTaskStatus == Hdd.TASK_ERROR):
+            return "Err: " + str(self.CurrentTaskReturnCode)
         else:
             return "???"
 
@@ -201,15 +205,17 @@ class Hdd:
         
         if(self.CurrentTaskStatus == Hdd.TASK_ERASING):
             if(self.CurrentTask != None):
-                r = self.CurrentTask.poll()
-                if(r):
+                r = self.CurrentTask.poll() #Returns either a return code, or 'None' type if the process isn't finished.
+                if(r != None):
+                    self.CurrentTaskReturnCode = r
                     if(r == 0):
                         self.CurrentTaskStatus == Hdd.TASK_NONE
                         self.CurrentTask = None
                     else:
-                        pass #What do we do if there is an error?
+                        self.CurrentTaskStatus = Hdd.TASK_ERROR
                 else:
-                    logwrite("Task running: " + str(self.CurrentTask.pid))
+                    pass #Its still running
+                    #logwrite("Task running: " + str(self.CurrentTask.pid))
             else:
                 self.CurrentTaskStatus == Hdd.TASK_NONE
         elif(self.CurrentTaskStatus == Hdd.TASK_EXTERNAL):
