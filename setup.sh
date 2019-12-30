@@ -1,10 +1,15 @@
 #!/bin/bash
 
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 
+   exit 1
+fi
+
 DIRECTORY="/usr/bin/hddmon"
 
 #install python packages
-pip3 install pySMART pyudev urwid
-
+pip3 install pySMART pyudev urwid --cache-dir ./pip-cache
+read
 #put all of the contents that make us a utility in /usr/bin/hddmon/
 cp ./auto-hdd-test.py $DIRECTORY/hddmon.py
 cp ./hdd.py $DIRECTORY

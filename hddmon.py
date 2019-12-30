@@ -57,7 +57,7 @@ class HddWidget(ui.WidgetWrap):
             self._cap.set_text(str(hdd.size) + " SSD")
         self._stat = ui.Text((self.hdd.status, self.hdd.smartResult), align='center')
         self._check = ui.CheckBox('', state=self._checked)
-        self._more = ui.Button("Info", on_press=self.ShowInfo)
+        self._more = ui.Button("Info", on_press=None) #TODO FIx
 
         self._col = ui.Columns([(4,self._check), ('weight', 35, self._id), ('weight', 20, self._port), ('weight', 20, self._cap), ('weight', 25, self._node), ('weight', 15, self._task), ('weight', 10, self._stat), ('weight', 25, self._more)])
         self._pad = ui.Padding(self._col, align='center', left=2, right=2)
@@ -142,7 +142,7 @@ class Application(object):
         self.ShortTest = ui.Button("Short test", on_press=self.commandShortTest)
         self.LongTest = ui.Button("Long test", on_press=self.commandLongTest)
         self.AbortTest = ui.Button("Abort test", on_press=self.commandAbortTest)
-        self.Erase = ui.Button("Erase disk", on_press=self.ShowAreYouSureDialog, user_data=[['Erase drives?'], self.commandErase])
+        self.Erase = ui.Button("Erase disk", on_press=self.ShowErrorDialog, user_data=["Erasing is not supported yet."])
         self.Clone = ui.Button("Apply image", on_press=self.ShowErrorDialog, user_data=["Cloning is not supported yet."])
 
         self.SubControls = ui.ListBox([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, ui.Divider(), self.Clone, ui.Divider(), ui.Button("Exit", on_press=self.exit)])
@@ -161,7 +161,11 @@ class Application(object):
         print("Connecting to server...")
         self.daemonAddress = ('localhost', 63962)
         self.daemonKey = b'H4789HJF394615R3DFESZFEZCDLPOQ'
-        client = ipc.Client(self.daemonAddress, authkey=self.daemonKey)
+        try:
+            client = ipc.Client(self.daemonAddress, authkey=self.daemonKey)
+        except Exception as e:
+            print("A connection could not be established to the testing server: \n" + str(e))
+            exit(1)
         print("Connected!")
         self.daemonCommThread = threading.Thread(target=self.daemonComm, kwargs={'me': client})
     
@@ -214,7 +218,7 @@ class Application(object):
             found = False
             for h in localhdds:
                 logwrite("\t against " + h.serial)
-                if(str(h.serial) == str(hw.hdd.serial)):
+                if(str(h.serial) == str(hw.hdd.serial)) and not (h in foundhdds):
                     logwrite("\t===FOUND===")
                     hvm = HddViewModel.FromHdd(h)
                     hw.Update(hvm) #Update the widget with the new hdd info
@@ -246,7 +250,7 @@ class Application(object):
                 try:
                     data = me.recv()#blocking call
                 except EOFError as e:
-                    self.ShowErrorDialog(text=["Pipe unexpectedly closed:\n", str(e)])
+                    self.ShowErrorDialog(text=["Pipe unexpectedly closed:\n", str(e) + "\n", "The connection to the testing server may have been lost."])
                     data = None
                     del me
                     break
@@ -273,7 +277,7 @@ class Application(object):
                 try:
                     data = me.recv()#blocking call
                 except EOFError as e:
-                    self.ShowErrorDialog(text=["Pipe unexpectedly closed:\n", str(e)])
+                    self.ShowErrorDialog(text=["Pipe unexpectedly closed:\n", str(e) + "\n", "The connection to the testing server may have been lost."])
                     data = None
                     del me
                     break

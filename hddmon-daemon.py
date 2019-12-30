@@ -6,13 +6,14 @@ import proc.core
 import pyudev
 from pySMART import Device
 import re
-import urwid as ui
 from hdd import Hdd
 import pySMART
 import time
 import threading
 import sasdetection
 import portdetection
+import signal
+from socket import timeout
 
 bootPartNode = subprocess.Popen("df -h | grep '/$' | sed 's/\\(^\\/dev\\/\\w*\\).*/\\1/'", shell=True, stdout=subprocess.PIPE).stdout.read() #Thanks https://askubuntu.com/questions/542351/determine-boot-disk
 bootPartNode = bootPartNode.decode().rstrip()
@@ -49,8 +50,6 @@ class ListModel:
         self.hdds = []
         self.monitor = pyudev.Monitor.from_netlink(context)
         self.monitor.filter_by(subsystem='block', device_type='disk')
-        self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
-        self.observer.start()
         self.PortDetector = portdetection.PortDetection()
         self.updateDevices(bootDiskNode)
         self._loopgo = True
@@ -58,7 +57,6 @@ class ListModel:
         self.updateThread = threading.Thread(target=self.updateLoop)
 
         self.serverAddress = ('localhost', 63962)
-        self.server = ipc.Listener(address=self.serverAddress, authkey=b'H4789HJF394615R3DFESZFEZCDLPOQ')
 
         self.clientlist = [] #list of (client, addr)
         
@@ -107,21 +105,32 @@ class ListModel:
     def serverLoop(self):
         print("Server running")
         while self._loopgo:
-            client = self.server.accept()
-            clientAddress = str(self.server.last_accepted)
-            print("Connection from" + clientAddress)
-            #should recieve a tuple with the following:
-            #(command, data)
-            #ie:
-            #('erase', [Serial1, Serial2, Serial3])
-            newClientThread = threading.Thread(target=self.listenToClient, kwargs={'client': client})
-            self.clientlist.append((client, clientAddress, newClientThread))
-            newClientThread.start()
+            try:
+                client = self.server.accept()
+            except timeout as e:
+                #print("Listen wait timeout: " + str(e))
+                client = None
+            except Exception as e:
+                print("An exception occurred while listening for clients: " + str(e))
+                client = None
+
+            if client != None:
+                clientAddress = str(self.server.last_accepted)
+                print("Connection from" + clientAddress)
+                #should recieve a tuple with the following:
+                #(command, data)
+                #ie:
+                #('erase', [Serial1, Serial2, Serial3])
+                newClientThread = threading.Thread(target=self.listenToClient, kwargs={'client': client})
+                self.clientlist.append((client, clientAddress, newClientThread))
+                newClientThread.start()
+
+        print("Server loop stopped")
 
     def listenToClient(self, client=None):
         print("Stemmed client into seperate thread")
         futuremsg = None
-        while 'client' in locals():
+        while ('client' in locals()) and self._loopgo:
             if(futuremsg):
                 msg = futuremsg
                 futuremsg = None
@@ -190,12 +199,6 @@ class ListModel:
             else:
                 pass #Message wasn't a tuple
         print("Client connection ended")
-            
-
-
-    def stop(self):
-        self._loopgo = False
-        self.updateThread.join()
 
     def updateLoop(self):
         '''
@@ -203,23 +206,25 @@ class ListModel:
         '''
         print("Update thread running")
         smart_coldcall_interval = 30.0 #seconds
-        smart_last_coldcall = time.time()
+        smart_call_interval = 5.0
         while self._loopgo:
             busy = False
             for hdd in self.hdds:
                 if(hdd.status == Hdd.STATUS_LONGTST) or (hdd.status == Hdd.STATUS_TESTING): #If we're testing, queue the smart data to update the progress
-                    try:
-                        hdd.UpdateSmart()
-                        print("\tTEST:" + str(hdd.CurrentTask))
-                    except Exception as e:
-                        logwrite("Exception raised!:" + str(e))
-                        print("Exception raised!:" + str(e))
-                    busy = True
-                else:
-                    if(time.time() - smart_last_coldcall > smart_coldcall_interval):
-                        smart_last_coldcall = time.time()
+                    if(time.time() - hdd._smart_last_call > smart_call_interval):
                         try:
                             hdd.UpdateSmart()
+                            print("\tTEST:" + str(hdd.status))
+                        except Exception as e:
+                            logwrite("Exception raised!:" + str(e))
+                            print("Exception raised!:" + str(e))
+                        busy = True
+                else:
+                    if(time.time() - hdd._smart_last_call > smart_coldcall_interval):
+                        print("smart cold-call to " + str(hdd.serial))
+                        try:
+                            hdd.UpdateSmart()
+                            hdd._smart_last_call = time.time()
                         except Exception as e:
                             logwrite("Exception raised!:" + str(e))
                             print("Exception raised!:" + str(e))
@@ -234,13 +239,13 @@ class ListModel:
                     busy = True
                 hdd.refresh()
             self.stuffRunning = busy
-            time.sleep(5)
+            time.sleep(1)
 
     def updateDevices(self, bootNode: str):
         """
         Checks the system's existing device list and gatheres already connected hdds.
         """
-        #This should be run at the beginning of the program
+        #This should be run at the beginning of the program, or only if the hdd array is cleared.
         #Check to see if this device path already exists in our application.
         print(pySMART.DeviceList().devices)
         for d in pySMART.DeviceList().devices:
@@ -265,7 +270,7 @@ class ListModel:
 
             
     def addHdd(self, hdd: Hdd):
-        hdd.CurrentTask = self.findProcAssociated(hdd.node)
+        hdd.CurrentTask = self.findProcAssociated(hdd.name)
         hdd.refresh()
         self.hdds.append(hdd)
         #hdd.ShortTest()
@@ -299,17 +304,58 @@ class ListModel:
         elif(action == 'remove') and (device != None):
             self.removeHddStr(device.device_node)
 
-    def findProcAssociated(self, node):
+    def findProcAssociated(self, name):
+        print("Looking for " + str(name) + " in process cmdline list...")
         plist = proc.core.find_processes()
         for p in plist:
-            if node in p.cmdline:
+            if name in p.cmdline:
+                print("Found process " + str(p) + " containing name " + str(name) + " in cmdline.")
                 return p
+        print("No process found for " + str(name) + ".")
         return None
 
     def start(self):
+        self._loopgo = True
+        self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
+        self.observer.start()
+        self.server = ipc.Listener(address=self.serverAddress, authkey=b'H4789HJF394615R3DFESZFEZCDLPOQ')
+        self.server._listener._socket.settimeout(3.0)
+        self.updateThread = threading.Thread(target=self.updateLoop)
         self.updateThread.start()
         self.serverLoop()
 
+    def stop(self):
+        self._loopgo = False
+        self.server.close()
+        self.observer.stop()
+        self.updateThread.join()
+
+    def signal_close(self, signalNumber, frame):
+        print("Got signal " + str(signalNumber) + ", quitting.")
+        self.stop()
+
+    def signal_hangup(self, signalNumber, frame):
+        print("Got signal " + str(signalNumber) + ", no action will be taken.")
+        pass
+
+    def signal_info(self, signalNumber, frame):
+        print("Got signal " + str(signalNumber) + ", refreshing devices.")
+        self._loopgo = False
+        self.stop()
+        self.hdds.clear()
+        self.updateDevices(bootDiskNode)
+        self.start()
+
+
 if __name__ == '__main__':
     hd = ListModel()
+    signal.signal(signal.SIGINT, hd.signal_close)
+    signal.signal(signal.SIGQUIT, hd.signal_close)
+    signal.signal(signal.SIGTERM, hd.signal_close)
+    #signal.signal(signal.SIGKILL, hd.signal_close) #We should let this kill the program instead of trying to handle it
+    signal.signal(signal.SIGHUP, hd.signal_hangup)
+    signal.signal(signal.SIGUSR1, hd.signal_info)
     hd.start()
+    exit(0)
+else:
+    exit(1)

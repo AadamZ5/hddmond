@@ -66,6 +66,7 @@ class Hdd:
         self.CurrentTaskStatus = Hdd.TASK_NONE
         self.CurrentTaskReturnCode = None
         self.Size = self._smart.capacity
+        self._smart_last_call = time.time()
 
         #Check interface
         if(self._smart.interface != None):
@@ -165,7 +166,12 @@ class Hdd:
             return False #There is a task running on this hdd. cancel it first
 
     def GetTestProgressString(self):
-        return str(self.testProgress) + "%"
+        if(self.testProgress == None):
+            p = "0"
+        else:
+            p = str(self.testProgress)
+
+        return p + "%"
     
     def GetTaskProgressString(self):
         if(self.CurrentTaskStatus == Hdd.TASK_ERASING):
@@ -254,6 +260,14 @@ class Hdd:
             return self.serial
         else:
             return "???"
+
+    def __repr__(self):
+        if(self._smart.is_ssd):
+            t = "SSD"
+        else:
+            t = "HDD"
+        s = t + " " + str(self.serial) + " at " + str(self.node)
+        return "<" + s + ">"
 
 class HddViewModel:
     def __init__(self, serial=None, node=None, pciAddress=None, status=None, taskStatus=None, taskString=None, testProgress=None, port=None, size=None, isSsd=None, smartResult=None):
