@@ -37,7 +37,10 @@ class Hdd:
         state = self.__dict__.copy()
         # Remove the unpicklable entries. Udev references CDLL which won't pickle.
         del state['_udev']
-        del state['CurrentTask']
+
+        #subprocess.Popen objects wont pickle because of threads, but proc.core.Process objects will.
+        if(type(self.CurrentTask) == subprocess.Popen):
+            del state['CurrentTask']
         return state
 
     def __setstate__(self, state):
@@ -45,7 +48,8 @@ class Hdd:
         self.__dict__.update(state)
         # Restore the udev link
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), self.node)
-        self.CurrentTask = None
+        if not ('CurrentTask' in vars(self)):
+            self.CurrentTask = None
         
 
     def __init__(self, node: str):
@@ -67,7 +71,8 @@ class Hdd:
         self.CurrentTaskReturnCode = None
         self.Size = self._smart.capacity
         self._smart_last_call = time.time()
-
+        self.medium = None
+        self._smart.tests
         #Check interface
         if(self._smart.interface != None):
 
@@ -90,6 +95,10 @@ class Hdd:
             
             self.serial = str(self._smart.serial).replace('-', '')
             self.model = self._smart.model
+            if(self._smart.is_ssd):
+                self.medium = "SSD"
+            else:
+                self.medium = "HDD"
         else:
             self.status = Hdd.STATUS_UNKNOWN
             self.serial = "Unknown HDD"
@@ -180,7 +189,7 @@ class Hdd:
             return "Idle"
         elif(self.CurrentTaskStatus == Hdd.TASK_EXTERNAL):
             if(type(self.CurrentTask) == proc.core.Process):
-                return str(self.CurrentTask.comm)
+                return "PID " + str(self.CurrentTask.pid)
         elif(self.CurrentTaskStatus == Hdd.TASK_ERROR):
             return "Err: " + str(self.CurrentTaskReturnCode)
         else:
@@ -204,21 +213,30 @@ class Hdd:
         #print(self._smart._test_running)
 
     def UpdateTask(self):
-        if(self.CurrentTaskStatus != Hdd.TASK_NONE):
+        if(self.CurrentTaskStatus != Hdd.TASK_NONE) and (self.CurrentTaskStatus != Hdd.TASK_ERROR):
             logwrite(str(self.serial) + ": Task running! Task type: " + self.CurrentTaskStatus)
         else:
-            logwrite(str(self.serial) + ": No task running.")
+            if(self.CurrentTask != None):
+                if(type(self.CurrentTask) == proc.core.Process):
+                    if(self.CurrentTask.is_alive):
+                        pass
+                    else:
+                        self.CurrentTask = None
+                        self.CurrentTaskStatus = Hdd.TASK_NONE
+            else:
+                logwrite(str(self.serial) + ": No task running.")
         
         if(self.CurrentTaskStatus == Hdd.TASK_ERASING):
             if(self.CurrentTask != None):
                 r = self.CurrentTask.poll() #Returns either a return code, or 'None' type if the process isn't finished.
+                self.CurrentTaskReturnCode = r
                 if(r != None):
-                    self.CurrentTaskReturnCode = r
                     if(r == 0):
                         self.CurrentTaskStatus == Hdd.TASK_NONE
                         self.CurrentTask = None
                     else:
                         self.CurrentTaskStatus = Hdd.TASK_ERROR
+                        self.CurrentTask = None
                 else:
                     pass #Its still running
                     #logwrite("Task running: " + str(self.CurrentTask.pid))

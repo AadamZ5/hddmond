@@ -1,7 +1,12 @@
 [Unit]
+Name=Hdd monitor daemon
 Description=hddmon daemon that keeps track of attached hard drives.
 
 [Service]
-ExecStart=/usr/bin/hddmon/hddmon-daemon.py
+ExecStart=/usr/bin/python3 /etc/hddmon/hddmon-daemon.py
 Restart=on-failure
+StandardOutput=file:/etc/hddmon/o.log
+StandardError=file:/etc/hddmon/e.log
+User=root
+Group=root
 

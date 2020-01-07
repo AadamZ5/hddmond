@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import os
+os.chdir('/etc/hddmon')
 import subprocess
 import multiprocessing.connection as ipc
 import proc.core
@@ -41,7 +42,7 @@ def logwrite(s:str, endl='\n'):
 
 class ListModel:
     """
-    Data model that holds hdd list and widgets.
+    Data model that holds hdd list.
     """
 
 
@@ -51,27 +52,34 @@ class ListModel:
         self.monitor = pyudev.Monitor.from_netlink(context)
         self.monitor.filter_by(subsystem='block', device_type='disk')
         self.PortDetector = portdetection.PortDetection()
+        self.AutoShortTest = False
         self.updateDevices(bootDiskNode)
         self._loopgo = True
         self.stuffRunning = False
         self.updateThread = threading.Thread(target=self.updateLoop)
+
+        
 
         self.serverAddress = ('localhost', 63962)
 
         self.clientlist = [] #list of (client, addr)
         
 
-    def eraseBySerial(self, serials = []):
+    def eraseBySerial(self, serials = []): #Starts an erase operation on the drives matching the input serials
+        r = False
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
-                    h.Erase()
-                    print("Started erase on " + str(h.serial) + " with PID " + str(h.CurrentTask.pid))
+                    r = h.Erase()
+                    if r == True:
+                        print("Started erase on " + str(h.serial) + " with PID " + str(h.CurrentTask.pid))
+                    else:
+                        print("Couldn't start erase on " + str(h.serial))
                     break;
 
-        return True
+        return r
 
-    def shortTestBySerial(self, serials = []):
+    def shortTestBySerial(self, serials = []): #Starts a short test on the drives matching the input serials
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
@@ -80,7 +88,7 @@ class ListModel:
 
         return True
 
-    def longTestBySerial(self, serials = []):
+    def longTestBySerial(self, serials = []): #Starts a long test on the drives matching the input serials
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
@@ -89,7 +97,7 @@ class ListModel:
 
         return True
 
-    def abortTestBySerial(self, serials = []):
+    def abortTestBySerial(self, serials = []): #Stops a test on the drives matching the input serials
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
@@ -98,7 +106,7 @@ class ListModel:
 
         return True
 
-    def imageBySerial(self, serials = [], image=None):
+    def imageBySerial(self, serials = [], image=None): #applies an image on the drives matching the input serials
         pass
         return False
 
@@ -128,7 +136,7 @@ class ListModel:
         print("Server loop stopped")
 
     def listenToClient(self, client=None):
-        print("Stemmed client into seperate thread")
+        print("Split client into seperate thread")
         futuremsg = None
         while ('client' in locals()) and self._loopgo:
             if(futuremsg):
@@ -136,7 +144,7 @@ class ListModel:
                 futuremsg = None
             else:
                 try:
-                    print("Waiting for msg")
+                    #print("Waiting for msg")
                     msg = client.recv()#blocking call
                 except EOFError as e:
                     print("Pipe unexpectedly closed:\n" + str(e))
@@ -144,7 +152,7 @@ class ListModel:
                     del client
                     break
                 
-            print("Got message: " + str(msg))
+            #print("Got message: " + str(msg))
             if(type(msg) == tuple):
                 command = ''
                 readCmd = True
@@ -155,7 +163,7 @@ class ListModel:
                     print("Error while retrieving data from tuple in client message.\n" + str(e))
                     readCmd = False
 
-                print(str(client) + ": " + str(command) + ", " + str(data))
+                #print(str(client) + ": " + str(command) + ", " + str(data))
                 
                 if readCmd:
                     if command == '':
@@ -188,7 +196,7 @@ class ListModel:
                     elif command == 'image':
                         client.send('error')
                     elif command == 'listen':
-                        print("Sent: " + str(self.hdds))
+                        #print("Sent: " + str(self.hdds))
                         if(len(self.hdds) == 0):
                             client.send(None)
                         else:
@@ -214,13 +222,13 @@ class ListModel:
                     if(time.time() - hdd._smart_last_call > smart_call_interval):
                         try:
                             hdd.UpdateSmart()
-                            print("\tTEST:" + str(hdd.status))
+                            #print("\tTEST:" + str(hdd.status))
                         except Exception as e:
                             logwrite("Exception raised!:" + str(e))
                             print("Exception raised!:" + str(e))
                         busy = True
                 else:
-                    if(time.time() - hdd._smart_last_call > smart_coldcall_interval):
+                    if(time.time() - hdd._smart_last_call > smart_coldcall_interval) and not (hdd.CurrentTaskStatus == Hdd.TASK_EXTERNAL): #Dont try and update smart if an external process is using this drive. May interfere with the program.
                         print("smart cold-call to " + str(hdd.serial))
                         try:
                             hdd.UpdateSmart()
@@ -229,14 +237,19 @@ class ListModel:
                             logwrite("Exception raised!:" + str(e))
                             print("Exception raised!:" + str(e))
 
-                
+                hdd.UpdateTask()
                 if(hdd.CurrentTaskStatus != Hdd.TASK_NONE): #If there is a task operating on the drive's data
                     try:
-                        hdd.UpdateTask()
-                        print("\tTASK:" + str(hdd.CurrentTask) + " (" + str(hdd.CurrentTask.pid) + ", " + str(hdd.CurrentTaskStatus) + ", " + str(hdd.CurrentTaskReturnCode) + ")")
+                        pass
+                        #print("\tTASK:" + str(hdd.CurrentTask) + " (" + str(hdd.CurrentTask.pid) + ", " + str(hdd.CurrentTaskStatus) + ", " + str(hdd.CurrentTaskReturnCode) + ")")
                     except Exception as e:
                         logwrite("Exception raised!:" + str(e))
                     busy = True
+                else:
+                    task = self.findProcAssociated(hdd.name)
+                    if(task != None):
+                        hdd.CurrentTask = task
+                        hdd.CurrentTaskStatus = hdd.TASK_EXTERNAL
                 hdd.refresh()
             self.stuffRunning = busy
             time.sleep(1)
@@ -271,18 +284,15 @@ class ListModel:
             
     def addHdd(self, hdd: Hdd):
         hdd.CurrentTask = self.findProcAssociated(hdd.name)
+        if hdd.CurrentTask != None:
+            hdd.CurrentTaskStatus = Hdd.TASK_EXTERNAL
         hdd.refresh()
         self.hdds.append(hdd)
-        #hdd.ShortTest()
+        if(self.AutoShortTest == True):
+            hdd.ShortTest()
 
     def removeHddHdd(self, hdd: Hdd):
-        for h in self.hdds:
-            if (h.node == hdd.node):
-                try:
-                    self.hdds.remove(h)
-                except KeyError as e:
-                    print("Error removing hdd by hdd!:\n" + str(e))
-                break
+        self.removeHddStr(hdd.node)
     
     def removeHddStr(self, node: str):
         for h in self.hdds:
@@ -305,13 +315,14 @@ class ListModel:
             self.removeHddStr(device.device_node)
 
     def findProcAssociated(self, name):
-        print("Looking for " + str(name) + " in process cmdline list...")
+        #print("Looking for " + str(name) + " in process cmdline list...")
         plist = proc.core.find_processes()
         for p in plist:
-            if name in p.cmdline:
-                print("Found process " + str(p) + " containing name " + str(name) + " in cmdline.")
-                return p
-        print("No process found for " + str(name) + ".")
+            for cmdlet in p.cmdline:
+                if name in cmdlet:
+                    print("Found process " + str(p) + " containing name " + str(name) + " in cmdline.")
+                    return p
+        #print("No process found for " + str(name) + ".")
         return None
 
     def start(self):
@@ -358,4 +369,6 @@ if __name__ == '__main__':
     hd.start()
     exit(0)
 else:
-    exit(1)
+    print("This program is intended to be run from the cli")
+    logwrite("This program is intended to be run from the cli")
+    exit(55)

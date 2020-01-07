@@ -123,8 +123,8 @@ class SasDevice:
                     break
 
             #Now find the end
-            for i in range((startIndex + 2), len(lines)): #The reason we start at 'startIndex + 2' is so we skip the line directly after the header, which does
-                if lines[i].startswith("--------"):      #contain '--------' itself. 
+            for i in range((startIndex + 2), len(lines)): #The reason we start at 'startIndex + 2' is so we skip the line directly after the header, which does contain '--------' itself.
+                if lines[i].startswith("--------"):
                     endIndex = i
                     break  
             
@@ -152,7 +152,7 @@ class SasDevice:
             pass #Do something else?
 
 class SasDetective:
-    sas2ircu = r'./sas2ircu/sas2ircu_linux_x86_rel/sas2ircu'
+    sas2ircu = r'/etc/hddmon/sas2ircu/sas2ircu_linux_x86_rel/sas2ircu'
 
     def __init__(self):
         listSas = subprocess.run([SasDetective.sas2ircu, 'LIST'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)

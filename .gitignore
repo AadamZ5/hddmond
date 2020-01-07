@@ -1,5 +1,9 @@
 .vscode/.ropeproject/config.py
 .vscode/settings.json
 ./log
-./__pycache__
 *.log
+./*.log
+./portdetector.log
+./__pycache__
+
+
