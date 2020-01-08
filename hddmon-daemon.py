@@ -1,18 +1,19 @@
 #!/usr/bin/python3
-import os
+import os, sys
 os.chdir('/etc/hddmon')
+sys.path.append('/etc/hddmon')
 import subprocess
 import multiprocessing.connection as ipc
 import proc.core
 import pyudev
 from pySMART import Device
 import re
-from hdd import Hdd
+from hddmontools.hdd import Hdd
 import pySMART
 import time
 import threading
-import sasdetection
-import portdetection
+import hddmontools.sasdetection
+import hddmontools.portdetection
 import signal
 from socket import timeout
 
@@ -51,7 +52,7 @@ class ListModel:
         self.hdds = []
         self.monitor = pyudev.Monitor.from_netlink(context)
         self.monitor.filter_by(subsystem='block', device_type='disk')
-        self.PortDetector = portdetection.PortDetection()
+        self.PortDetector = hddmontools.portdetection.PortDetection()
         self.AutoShortTest = False
         self.updateDevices(bootDiskNode)
         self._loopgo = True
@@ -249,7 +250,7 @@ class ListModel:
                     task = self.findProcAssociated(hdd.name)
                     if(task != None):
                         hdd.CurrentTask = task
-                        hdd.CurrentTaskStatus = hdd.TASK_EXTERNAL
+                        hdd.CurrentTaskStatus = Hdd.TASK_EXTERNAL
                 hdd.refresh()
             self.stuffRunning = busy
             time.sleep(1)

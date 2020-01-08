@@ -1,5 +1,5 @@
 import subprocess
-import pciaddress
+from .pciaddress import PciAddress
 
 class SasDevice:
     def __init__(self, index=None):
@@ -47,7 +47,7 @@ class SasDevice:
             device = data[12].split(':')[1].strip().zfill(2)
             function = data[13].split(':')[1].strip().zfill(1)
 
-            self.PciAddress = pciaddress.PciAddress(segment, bus, device, function)
+            self.PciAddress = PciAddress(segment, bus, device, function)
             #print(self.PciAddress)
 
         self.GetDevices()

@@ -1,5 +1,5 @@
 import subprocess
-from pciaddress import PciAddress
+from .pciaddress import PciAddress
 
 class AhciDevice():
     def __init__(self):

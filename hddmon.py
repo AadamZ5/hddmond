@@ -1,6 +1,8 @@
 #!/usr/bin/python3
-import os
+import os, sys
 os.chdir('/etc/hddmon')
+print(os.getcwd())
+sys.path.append('/etc/hddmon')
 import subprocess
 import multiprocessing.connection as ipc
 import proc.core
@@ -9,12 +11,26 @@ from pySMART import Device
 import re
 import urwid as ui
 import additional_urwid_widgets as ui_special
-from hdd import Hdd, HddViewModel
 import pySMART
 import time
 import threading
-import sasdetection
-import portdetection
+from hddmontools.hdd import Hdd, HddViewModel
+from hddmontools.pciaddress import PciAddress
+from hddmontools.portdetection import PortDetection
+
+euid = os.geteuid()
+if euid != 0:
+    print("May I have root privledges? Without them 'htop' may not list disk usage correctly.")
+    inp = input("Please enter yes or no: ")
+    if ('y' in inp.strip().lower()):
+        args = ['sudo', sys.executable] + sys.argv + [os.environ]
+        # the next line replaces the currently-running process with the sudo
+        os.execlpe('sudo', *args)
+    else:
+        print("Not elevated.")
+        time.sleep(1.25)
+
+
 
 debug = False
 def logwrite(s:str, endl='\n'):

@@ -3,7 +3,7 @@ import pySMART
 import time
 import subprocess
 import datetime
-import pciaddress
+from .pciaddress import PciAddress
 import proc.core
 
 debug = False

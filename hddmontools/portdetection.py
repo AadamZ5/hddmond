@@ -1,14 +1,14 @@
 #!/usr/bin/python3
 
-import ahcidetection
-import sasdetection
+from .ahcidetection import *
+from .sasdetection import *
 import subprocess
-from pciaddress import PciAddress
+from .pciaddress import PciAddress
 
 class PortDetection():
     def __init__(self):
-        self.ahcidet = ahcidetection.AhciDetective()
-        self.sasdet = sasdetection.SasDetective()
+        self.ahcidet = AhciDetective()
+        self.sasdet = SasDetective()
 
         lspci = subprocess.run(['lspci'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         lines = str(lspci.stdout).splitlines()

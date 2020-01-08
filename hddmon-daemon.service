@@ -1,6 +1,6 @@
 [Unit]
-Name=Hdd monitor daemon
 Description=hddmon daemon that keeps track of attached hard drives.
+Requires=udev.service
 
 [Service]
 ExecStart=/usr/bin/python3 /etc/hddmon/hddmon-daemon.py
@@ -9,4 +9,8 @@ StandardOutput=file:/etc/hddmon/o.log
 StandardError=file:/etc/hddmon/e.log
 User=root
 Group=root
+
+[Install]
+Alias=hddmond
+
 
