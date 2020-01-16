@@ -215,7 +215,7 @@ class ListModel:
         '''
         print("Update thread running")
         smart_coldcall_interval = 30.0 #seconds
-        smart_call_interval = 5.0
+        smart_call_interval = 5.0 #seconds
         while self._loopgo:
             busy = False
             for hdd in self.hdds:
@@ -229,7 +229,7 @@ class ListModel:
                             print("Exception raised!:" + str(e))
                         busy = True
                 else:
-                    if(time.time() - hdd._smart_last_call > smart_coldcall_interval) and not (hdd.CurrentTaskStatus == Hdd.TASK_EXTERNAL): #Dont try and update smart if an external process is using this drive. May interfere with the program.
+                    if(time.time() - hdd._smart_last_call > smart_coldcall_interval): #and not (hdd.CurrentTaskStatus == Hdd.TASK_EXTERNAL): #Dont try and update smart if an external process is using this drive. May interfere with the program.
                         print("smart cold-call to " + str(hdd.serial))
                         try:
                             hdd.UpdateSmart()

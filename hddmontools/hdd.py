@@ -18,12 +18,13 @@ class Hdd:
     """
     Class for storing data about HDDs
     """
-
+    
     STATUS_FAILING = 'failinghdd'
     STATUS_TESTING = 'testinghdd'
     STATUS_LONGTST = 'longtsthdd'
     STATUS_DEFAULT = 'defaulthdd'
     STATUS_PASSING = 'passinghdd'
+    STATUS_WARNING = 'warninghdd'
     STATUS_UNKNOWN = 'unknownhdd'
     TASK_ERASING = 'taskerase'
     TASK_NONE = 'tasknone'
@@ -77,12 +78,7 @@ class Hdd:
         if(self._smart.interface != None):
 
             #Set our status according to initial health assesment
-            if(self._smart.assessment == "PASS"):
-                self.status = Hdd.STATUS_DEFAULT
-            elif(self._smart.assessment == "FAIL"):
-                self.status = Hdd.STATUS_FAILING
-            else:
-                self.status = Hdd.STATUS_UNKNOWN
+            self._map_smart_assesment()
 
             #See if we're currently running a test
             status, testObj, remain = self._smart.get_selftest_result()
@@ -104,19 +100,6 @@ class Hdd:
             self.serial = "Unknown HDD"
             self.model = ""
             #Idk where we go from here
-        
-        sysp = self._udev.sys_path
-
-#     0    1     2        3           4        5     6        7          8      9   10
-#EX1:   '/sys/devices/pci0000:00/0000:00:1f.2/ata2/host2/target2:0:0/2:0:0:0/block/sdb        <== For a drive on the internal SATA controller!
-
-#     0    1     2        3           4             5        6       7          8             9         10      11   12
-#EX2:   '/sys/devices/pci0000:00/0000:00:01.0/0000:01:00.0/host0/port-0:3/end_device-0:3/target0:0:3/0:0:3:0/block/sdc'   <== For a drive on the LSI SAS controller!
-
-        driveinfo = sysp.split('/')
-        pci = str(driveinfo[4])
-
-        #self.OnPciAddress = 
         
         
     @staticmethod
@@ -241,7 +224,7 @@ class Hdd:
                     pass #Its still running
                     #logwrite("Task running: " + str(self.CurrentTask.pid))
             else:
-                self.CurrentTaskStatus == Hdd.TASK_NONE
+                self.CurrentTaskStatus = Hdd.TASK_NONE
         elif(self.CurrentTaskStatus == Hdd.TASK_EXTERNAL):
             if(type(self.CurrentTask) == proc.core.Process):
                 if(self.CurrentTask.is_alive):
@@ -259,17 +242,22 @@ class Hdd:
         #status, testObj, remain = self._smart.get_selftest_result()
         #self._smart.update()
 
+        self._map_smart_assesment()
+            
+        
+    def _map_smart_assesment(self):
         if self._smart._test_running == True:
             self.testProgress = self._smart._test_progress
             if not (self.status == Hdd.STATUS_TESTING) or (self.status == Hdd.STATUS_LONGTST):
                 self.status = Hdd.STATUS_LONGTST
             else:
                 pass
-            
         elif self._smart.assessment == 'PASS':
             self.status = Hdd.STATUS_PASSING
         elif self._smart.assessment == 'FAIL':
             self.status = Hdd.STATUS_FAILING
+        elif self._smart.assessment == 'WARN':
+            self.status = Hdd.STATUS_WARNING
         else:
             self.status = Hdd.STATUS_UNKNOWN
 

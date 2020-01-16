@@ -137,6 +137,7 @@ class Application(object):
         (Hdd.STATUS_DEFAULT, 'light gray', 'black'),
         (Hdd.STATUS_PASSING, 'light green', 'black'),
         (Hdd.STATUS_TESTING, 'yellow', 'black'),
+        (Hdd.STATUS_WARNING, 'black', 'yellow'),
         (Hdd.STATUS_UNKNOWN, 'light gray', 'dark red'),
         (Hdd.STATUS_LONGTST, 'light magenta', 'black'),
         (Hdd.TASK_ERASING, 'light cyan', 'black'),
