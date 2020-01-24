@@ -232,7 +232,7 @@ class Hdd:
                 self.CurrentTaskReturnCode = r
                 if(r != None):
                     if(r == 0):
-                        self.CurrentTaskStatus == Hdd.TASK_NONE
+                        self.CurrentTaskStatus = Hdd.TASK_NONE
                         self.CurrentTask = None
                     else:
                         self.CurrentTaskStatus = Hdd.TASK_ERROR
