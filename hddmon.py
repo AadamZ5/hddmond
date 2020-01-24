@@ -14,7 +14,7 @@ import additional_urwid_widgets as ui_special
 import pySMART
 import time
 import threading
-from hddmontools.hdd import Hdd, HddViewModel
+from hddmontools.hdd import Hdd, HddViewModel, HealthStatus
 from hddmontools.pciaddress import PciAddress
 from hddmontools.portdetection import PortDetection
 
@@ -95,7 +95,7 @@ class HddWidget(ui.WidgetWrap):
         
         self._id.set_text((self.hdd.status, str(self.hdd.serial)))
 
-        if(self.hdd.status == Hdd.STATUS_TESTING) or (self.hdd.status == Hdd.STATUS_LONGTST):
+        if(self.hdd.status == HealthStatus.ShortTesting) or (self.hdd.status == HealthStatus.LongTesting):
             self._stat.set_text((self.hdd.status, str(self.hdd.testProgress)))
         else:
             self._stat.set_text((self.hdd.status, str(self.hdd.smartResult)))
@@ -133,13 +133,13 @@ class Application(object):
         ('focus text',      'light gray',     'dark gray'),
         ('exit',            'light gray',       'black'),
         ('exit focus',      'light gray',       'light red'),
-        (Hdd.STATUS_FAILING, 'light red',        'black'),
-        (Hdd.STATUS_DEFAULT, 'light gray', 'black'),
-        (Hdd.STATUS_PASSING, 'light green', 'black'),
-        (Hdd.STATUS_TESTING, 'yellow', 'black'),
-        (Hdd.STATUS_WARNING, 'black', 'yellow'),
-        (Hdd.STATUS_UNKNOWN, 'light gray', 'dark red'),
-        (Hdd.STATUS_LONGTST, 'light magenta', 'black'),
+        (HealthStatus.Failing, 'light red',        'black'),
+        (HealthStatus.Default, 'light gray', 'black'),
+        (HealthStatus.Passing, 'light green', 'black'),
+        (HealthStatus.ShortTesting, 'yellow', 'black'),
+        (HealthStatus.Warn, 'black', 'yellow'),
+        (HealthStatus.Unknown, 'light gray', 'dark red'),
+        (HealthStatus.LongTesting, 'light magenta', 'black'),
         (Hdd.TASK_ERASING, 'light cyan', 'black'),
         (Hdd.TASK_NONE, 'dark gray', 'black'),
         (Hdd.TASK_EXTERNAL, 'dark blue', 'black'),
@@ -161,8 +161,8 @@ class Application(object):
 
         self.loop = ui.MainLoop(self.MainFrame, self.palette, pop_ups=True, unhandled_input=self.unhandled_input)
         self.Terminal.main_loop = self.loop
-        self.loop.set_alarm_in(0.5, self.checkTerminalFocus, user_data=None)
-        ui.connect_signal(self.Terminal, 'closed', callback=self.reinitializeTerminal)
+        self.loop.set_alarm_in(0.5, self._checkTerminalFocus, user_data=None)
+        ui.connect_signal(self.Terminal, 'closed', callback=self._reinitializeTerminal)
 
         self.bigBoxes = [self.HddListUi, self.SubControls, self.Htop]
 
@@ -216,7 +216,7 @@ class Application(object):
     def unhandled_input(self, key, *args, **kwargs):
         k = str(key).lower().strip()
         if k == 'ctrl a':
-            self.select_all()
+            self._select_all()
         elif k == 'ctrl q':
             self.ShowAreYouSureDialog(args=[["Exit?"], self.exit])
         elif k == 'tab':
@@ -232,7 +232,7 @@ class Application(object):
                 self.MainFrame.set_focus_path(self.bigBoxes[nex].get_focus_path())
                 break
 
-    def select_all(self):
+    def _select_all(self):
         self._all_selected = True
         for hw in self.hddEntries:
             if hw.checked == False:
@@ -241,7 +241,7 @@ class Application(object):
         for hw in self.hddEntries:
             hw.setChecked(not self._all_selected)
 
-    def getSelected(self):
+    def _getSelected(self):
         selected = []
         for hw in self.hddEntries:
             if hw.checked == True:
@@ -249,46 +249,50 @@ class Application(object):
 
         return selected
 
-    def checkTerminalFocus(self, loop, user_data):
+    def _getSelectedSerials(self):
+        serials = []
+        for hw in self.hddEntries:
+            if hw.checked == True:
+                serials.append(hw.hdd.serial)
+
+        return serials
+
+    def _checkTerminalFocus(self, loop, user_data):
         if self.Terminal.keygrab:
             self.terminalBorder.set_focus_map({None: 'active border'})
         else:
             self.terminalBorder.set_focus_map({None: 'focus border'})
-        loop.set_alarm_in(0.5, self.checkTerminalFocus, user_data=None)
+        loop.set_alarm_in(0.5, self._checkTerminalFocus, user_data=None)
 
     def commandShortTest(self, *args, **kwargs):
-        serialList = []
-        for hw in self.hddEntries:
-            if hw.checked:
-                serialList.append(hw.hdd.serial)
-
+        serialList = self._getSelectedSerials()
+        if(len(serialList) == 0):
+            self.ShowErrorDialog(text=['No hard drives selected'])
+            return
         command = ('shorttest', serialList, None)
         self.commandQueue.append(command)
 
     def commandLongTest(self, *args, **kwargs):
-        serialList = []
-        for hw in self.hddEntries:
-            if hw.checked:
-                serialList.append(hw.hdd.serial)
-
+        serialList = serialList = self._getSelectedSerials()
+        if(len(serialList) == 0):
+            self.ShowErrorDialog(text=['No hard drives selected'])
+            return
         command = ('longtest', serialList, None)
         self.commandQueue.append(command)
 
     def commandAbortTest(self, *args, **kwargs):
-        serialList = []
-        for hw in self.hddEntries:
-            if hw.checked:
-                serialList.append(hw.hdd.serial)
-
+        serialList = serialList = self._getSelectedSerials()
+        if(len(serialList) == 0):
+            self.ShowErrorDialog(text=['No hard drives selected'])
+            return
         command = ('aborttest', serialList, None)
         self.commandQueue.append(command)
 
     def commandErase(self, *args, **kwargs):
-        serialList = []
-        for hw in self.hddEntries:
-            if hw.checked:
-                serialList.append(hw.hdd.serial)
-
+        serialList = self._getSelectedSerials()
+        if(len(serialList) == 0):
+            self.ShowErrorDialog(text=['No hard drives selected'])
+            return
         command = ('erase', serialList, None)
         self.commandQueue.append(command)
 
@@ -351,14 +355,20 @@ class Application(object):
                     data = None
                 if(data):
                     logwrite("Got data: " + str(data))
-                    self.processHddData(data)
+                    if(type(data) == tuple):
+                        if(data[0] == 'hdds'):
+                            self.processHddData(data[1])
+                        elif(data[0] == 'error'):
+                            pass
+                        elif(data[0] == 'success'):
+                            pass
                 else:
                     self.processHddData([])
             else:
                 t = self.commandQueue.pop()
-                cmd = (t[0],t[1],t[2])
-                if(len(t) >3):
-                    callback = t[4]
+                cmd = (t[0],t[1]) #(command, data, callback, ???)
+                if(len(t) >2):
+                    callback = t[2]
                 else:
                     callback = None
                 me.send(cmd)
@@ -375,19 +385,22 @@ class Application(object):
                         
             time.sleep(1)
         try:
-            me.close()
+            if('me' in locals()):
+                me.close()
+            else:
+                pass
         except Exception as e:
             self.ShowErrorDialog(text=["Error while closing connection:\n", str(e)])
 
-    def reinitializeTerminal(self, loop, **kwargs):
+    def _reinitializeTerminal(self, loop, **kwargs):
         self.Terminal = ui.Terminal(['bash'], main_loop=self.loop, escape_sequence='tab')
         self.terminalBorder = ui.LineBox(self.Terminal)
         self.terminalBorder = ui.AttrMap(self.terminalBorder, None, focus_map='focus border')
         self.Htop.set_body(self.terminalBorder)
-        ui.connect_signal(self.Terminal, 'closed', callback=self.reinitializeTerminal)
+        ui.connect_signal(self.Terminal, 'closed', callback=self._reinitializeTerminal)
 
-    def resetLayout(self, button, t=None):
-        #t should be (bool, callback) or None
+    def resetLayout(self, button=None, t=None):
+        #t should be (bool, truecallback, falsecallback) or None
         self.MainFrame = ui.Pile([self.Top, self.Htop])
         self.loop.widget = self.MainFrame
 
@@ -398,8 +411,8 @@ class Application(object):
                         if(t[1]):
                             t[1]() #true callback
                     else:
-                        if(len(t) > 2):
-                            if(t[2]):
+                        if(len(t) > 2): #if there even is a false callback
+                            if(t[2]): #if the third item isn't None
                                 t[2]() #false callback
             else:
                 pass
@@ -408,6 +421,47 @@ class Application(object):
         self.ShowExitDialog()
         self.loop.draw_screen()
         self.stop()
+
+    def ShowLoadingDialog(self, button=None):
+
+        # Header
+        header_text = ui.Text(('banner', 'Please wait'), align = 'center')
+        header = ui.AttrMap(header_text, 'banner')
+
+        # Body
+        body_text = ui.Text("Loading, please wait...", align = 'center')
+        body_filler = ui.Filler(body_text, valign = 'middle')
+        body_padding = ui.Padding(
+            body_filler,
+            left = 1,
+            right = 1
+        )
+        body = ui.LineBox(body_padding)
+
+        # Footer
+        #footer = ui.Button('Okay', self.reset_layout)
+        # footer = ui.AttrWrap(footer, 'selectable', 'focus')
+        # footer = ui.GridFlow([footer], 8, 1, 1, 'center')
+
+        # Layout
+        layout = ui.Frame(
+            body,
+            header = header,
+            #footer = footer,
+            focus_part = 'footer'
+        )
+
+        w = ui.Overlay(
+            ui.LineBox(layout),
+            self.Top,
+            align = 'center',
+            width = 40,
+            valign = 'middle',
+            height = 10
+        )
+
+        self.MainFrame = ui.Pile([w, self.Htop])
+        self.loop.widget = self.MainFrame    
 
     def ShowExitDialog(self, button=None):
 
@@ -616,24 +670,23 @@ class Application(object):
         model = ui.Columns([('weight', labelColWidth, ui.Text("Model:", align='left')), ('weight',valueColWidth,ui.Text(hdd.model))])
         size = ui.Columns([('weight', labelColWidth, ui.Text("Size:", align='left')), ('weight',valueColWidth,ui.Text(hdd.Size))])
         medium = ui.Columns([('weight', labelColWidth, ui.Text("Type:", align='left')), ('weight',valueColWidth,ui.Text(hdd.medium))])
-        currentStatus = ui.Columns([('weight', labelColWidth, ui.Text("Current Status:", align='left')), ('weight',valueColWidth,ui.Text((hdd.status,hdd.status)))])
+        currentStatus = ui.Columns([('weight', labelColWidth, ui.Text("Current Status:", align='left')), ('weight',valueColWidth,ui.Text((hdd.status,str(hdd.status))))])
 
         if hdd._smart.tests == None:
-            testsNumber = ui.Columns([('weight', 10, ui.Text("Tests:", align='left')), (ui.Text("0"))])
+            testsNumber = ui.Columns([('weight', labelColWidth, ui.Text("Tests:", align='left')), ('weight',valueColWidth,(ui.Text("0", align='left')))])
         else:
-            testsNumber = ui.Columns([('weight', 10, ui.Text("Tests:", align='left')), (ui.Text(str(len(hdd._smart.tests))))])
+            testsNumber = ui.Columns([('weight', labelColWidth, ui.Text("Tests:", align='left')), ('weight',valueColWidth,(ui.Text(str(len(hdd._smart.tests)), align='left')))])
 
         pile = ui.Pile([serial,model,size,medium,testsNumber,currentStatus])
         line = ui.LineBox(ui.Filler(pile))
 
-        title = ui.Text((hdd.status ,str(hdd.serial) + " info: "))
+        title = ui.Text((hdd.status, str(hdd.serial) + " info: "))
         title = ui.Padding(title, left=3)
         foot = ui.Button("Exit", on_press=self.resetLayout)
         foot = ui.Padding(foot, left=3, width=10)
 
         frame = ui.Frame(body=line, header=title, footer=foot, focus_part='footer')
         self.loop.widget = frame
-
 
     def start(self):
         self.daemonCommThread.start()

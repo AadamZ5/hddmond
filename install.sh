@@ -1,5 +1,7 @@
 #!/bin/bash
 
+
+
 if [[ $EUID -ne 0 ]]; then
    echo "This script must be run as root" 
    exit 1
@@ -13,7 +15,7 @@ SRC_DIR="/etc/hddmon"
 
 #install python packages
 echo Installing python packages...
-pip3 install --force-reinstall --ignore-installed pySMART pyudev urwid additional_urwid_widgets proc
+pip3 install --force-reinstall --ignore-installed git+https://github.com/AadamZ5/py-SMART.git@pickling-fixes pyudev urwid additional_urwid_widgets proc graphqlclient
 
 #put all of the contents that make us a utility in /etc/hddmon/
 echo Copying files...

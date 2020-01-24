@@ -3,7 +3,9 @@ import pySMART
 import time
 import subprocess
 import datetime
+import enum
 from .pciaddress import PciAddress
+from .test import Test, TestResult
 import proc.core
 
 debug = False
@@ -14,18 +16,23 @@ def logwrite(s:str, endl='\n'):
         fd.write(endl)
         fd.close()
 
+class HealthStatus(enum.Enum):
+    Failing = 0,
+    ShortTesting = 1,
+    LongTesting = 2,
+    Default = 3,
+    Passing = 4,
+    Warn = 5,
+    Unknown = 6,
+
+    def __str__(self):
+        return self.name
+
 class Hdd:
     """
     Class for storing data about HDDs
     """
-    
-    STATUS_FAILING = 'failinghdd'
-    STATUS_TESTING = 'testinghdd'
-    STATUS_LONGTST = 'longtsthdd'
-    STATUS_DEFAULT = 'defaulthdd'
-    STATUS_PASSING = 'passinghdd'
-    STATUS_WARNING = 'warninghdd'
-    STATUS_UNKNOWN = 'unknownhdd'
+
     TASK_ERASING = 'taskerase'
     TASK_NONE = 'tasknone'
     TASK_EXTERNAL = 'taskextern'
@@ -45,26 +52,32 @@ class Hdd:
         return state
 
     def __setstate__(self, state):
-        # Restore instance attributes (i.e., filename and lineno).
+        # Restore instance attributes (i.e., serial and model).
         self.__dict__.update(state)
         # Restore the udev link
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), self.node)
         if not ('CurrentTask' in vars(self)):
             self.CurrentTask = None
         
+    @property
+    def testProgress(self):
+        if(self.test != None):
+            return self.test.progress
+        else:
+            return self._smart._test_progress
 
     def __init__(self, node: str):
         '''
-        Create a hdd object from its symlink node
+        Create a hdd object from its symlink node '/dev/sd?'
         '''
         self.serial = '"HDD"'
         self.model = str()
-        self.testProgress = int()
         self.node = node
         self.name = str(node).replace('/dev/', '')
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), node)
         self.OnPciAddress = None
-        self.estimatedCompletionTime = datetime.datetime.now()
+        self.test = None
+        self.testCallbacks = []
         self._smart = pySMART.Device(self.node)
         self.Port = None
         self.CurrentTask = None
@@ -74,18 +87,20 @@ class Hdd:
         self._smart_last_call = time.time()
         self.medium = None
         self._smart.tests
+        self.status = HealthStatus.Default
+
         #Check interface
         if(self._smart.interface != None):
 
             #Set our status according to initial health assesment
-            self._map_smart_assesment()
+            #self._map_smart_assesment()
 
             #See if we're currently running a test
             status, testObj, remain = self._smart.get_selftest_result()
             if status == 1:
-                self.testProgress = self._smart._test_progress
-                if not (self.status == Hdd.STATUS_TESTING) or (self.status == Hdd.STATUS_LONGTST):
-                    self.status = Hdd.STATUS_LONGTST #We won't know if this is a short or long test, so assume it can be long for sake of not pissing off the user.
+                #self.testProgress = self._smart._test_progress
+                if not (self.status == HealthStatus.ShortTesting) or (self.status == HealthStatus.LongTesting):
+                    self.status = HealthStatus.LongTesting #We won't know if this is a short or long test, so assume it can be long for sake of not pissing off the user.
                 else:
                     pass
             
@@ -96,7 +111,7 @@ class Hdd:
             else:
                 self.medium = "HDD"
         else:
-            self.status = Hdd.STATUS_UNKNOWN
+            self.status = HealthStatus.Unknown
             self.serial = "Unknown HDD"
             self.model = ""
             #Idk where we go from here
@@ -128,28 +143,44 @@ class Hdd:
         else:
             return False
 
-    def ShortTest(self):
-        self.status = Hdd.STATUS_TESTING
-        status, message, time = self._smart.run_selftest('short')
-        if(status == 0):
-            self.estimatedCompletionTime = datetime.datetime.strptime(str(time), r'%a %b %d %H:%M:%S %Y')
-        self._smart.update()
+    def _testCompletedCallback(self, result: TestResult):
+        if(result == TestResult.FINISH_PASSED):
+            self.status = HealthStatus.Passing
 
-    def LongTest(self):
-        self.status = Hdd.STATUS_LONGTST
-        status, message, time = self._smart.run_selftest('long')
-        if(status == 0):
-            self.estimatedCompletionTime = datetime.datetime.strptime(str(time), r'%a %b %d %H:%M:%S %Y')
-        self._smart.update()
+        elif(result == TestResult.FINISH_FAILED): 
+            if(self.status != HealthStatus.Failing):
+                self.status = HealthStatus.Warn #Set the drive status equal to warning if it's healh status is passing but its test failed
+            else:
+                self.status = HealthStatus.Failing
+
+        elif(result == TestResult.ABORTED):
+            self.status = HealthStatus.Default
+        elif(result == TestResult.CANT_START):
+            self.status = self.status
+        else:
+            self.status = HealthStatus.Warn
+        
+        for i in range(len(self.testCallbacks)):
+            c = self.testCallbacks.pop(i)
+            c(result)
+        
+
+    def ShortTest(self, callback=None):
+        self.status = HealthStatus.ShortTesting
+        if(callback != None):
+            self.testCallbacks.append(callback)
+        self.test = Test(self._smart, 'short', pollingInterval=5, callback=self._testCompletedCallback)
+
+    def LongTest(self, callback=None):
+        self.status = HealthStatus.LongTesting
+        if(callback != None):
+            self.testCallbacks.append(callback)
 
     def AbortTest(self):
-        if(self._smart._test_running):
-            self._smart.abort_selftest()
-            self.status = Hdd.STATUS_UNKNOWN
-            self._smart._test_running = False
-            self.estimatedCompletionTime = datetime.datetime.now()
+        if(self.test != None):
+            self.test.Abort()
 
-    def Erase(self):
+    def Erase(self, callback=None):
         if(self.CurrentTask == None):
             self.CurrentTask = subprocess.Popen(['scrub', '-f', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             self.CurrentTaskStatus = Hdd.TASK_ERASING
@@ -192,7 +223,6 @@ class Hdd:
 
     def UpdateSmart(self):
         self._smart.update()
-        self.testProgress = self._smart._test_progress
         #print(self._smart._test_running)
 
     def UpdateTask(self):
@@ -235,31 +265,9 @@ class Hdd:
         else:
             pass
                 
-                    
-                    
-
     def refresh(self):
-        #status, testObj, remain = self._smart.get_selftest_result()
-        #self._smart.update()
-
-        self._map_smart_assesment()
+        pass
             
-        
-    def _map_smart_assesment(self):
-        if self._smart._test_running == True:
-            self.testProgress = self._smart._test_progress
-            if not (self.status == Hdd.STATUS_TESTING) or (self.status == Hdd.STATUS_LONGTST):
-                self.status = Hdd.STATUS_LONGTST
-            else:
-                pass
-        elif self._smart.assessment == 'PASS':
-            self.status = Hdd.STATUS_PASSING
-        elif self._smart.assessment == 'FAIL':
-            self.status = Hdd.STATUS_FAILING
-        elif self._smart.assessment == 'WARN':
-            self.status = Hdd.STATUS_WARNING
-        else:
-            self.status = Hdd.STATUS_UNKNOWN
 
     def __str__(self):
         if(self.serial):
@@ -294,5 +302,5 @@ class HddViewModel:
         logwrite(str(h))
         hvm = HddViewModel(serial=h.serial, node=h.node, pciAddress=h.OnPciAddress, status=h.status, testProgress=h.GetTestProgressString(), taskStatus=h.CurrentTaskStatus, taskString=h.GetTaskProgressString(), port=h.Port, size=h.Size, isSsd=h._smart.is_ssd)
         hvm.smartResult = h._smart.__dict__.get('assessment', h._smart.__dict__.get('smart_status', None)) #Pickling mixup https://github.com/freenas/py-SMART/issues/23
-        logwrite("\t" + hvm.status)
+        logwrite("\t" + str(hvm.status))
         return hvm

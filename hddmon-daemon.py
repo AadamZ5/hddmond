@@ -8,7 +8,7 @@ import proc.core
 import pyudev
 from pySMART import Device
 import re
-from hddmontools.hdd import Hdd
+from hddmontools.hdd import Hdd, HealthStatus
 import pySMART
 import time
 import threading
@@ -16,6 +16,7 @@ import hddmontools.sasdetection
 import hddmontools.portdetection
 import signal
 from socket import timeout
+import graphqlclient
 
 bootPartNode = subprocess.Popen("df -h | grep '/$' | sed 's/\\(^\\/dev\\/\\w*\\).*/\\1/'", shell=True, stdout=subprocess.PIPE).stdout.read() #Thanks https://askubuntu.com/questions/542351/determine-boot-disk
 bootPartNode = bootPartNode.decode().rstrip()
@@ -58,7 +59,7 @@ class ListModel:
         self._loopgo = True
         self.stuffRunning = False
         self.updateThread = threading.Thread(target=self.updateLoop)
-
+        self.gclient = graphqlclient.GraphQLClient('http://172.23.2.202:4000')
         
 
         self.serverAddress = ('localhost', 63962)
@@ -68,6 +69,8 @@ class ListModel:
 
     def eraseBySerial(self, serials = []): #Starts an erase operation on the drives matching the input serials
         r = False
+        l = threading.Lock()
+        l.acquire()
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
@@ -77,34 +80,40 @@ class ListModel:
                     else:
                         print("Couldn't start erase on " + str(h.serial))
                     break;
-
+        l.release()
         return r
 
     def shortTestBySerial(self, serials = []): #Starts a short test on the drives matching the input serials
+        l = threading.Lock()
+        l.acquire()
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
                     h.ShortTest()
                     break;
-
+        l.release()
         return True
 
     def longTestBySerial(self, serials = []): #Starts a long test on the drives matching the input serials
+        l = threading.Lock()
+        l.acquire()
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
                     h.LongTest()
                     break;
-
+        l.release()
         return True
 
     def abortTestBySerial(self, serials = []): #Stops a test on the drives matching the input serials
+        l = threading.Lock()
+        l.acquire()
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
                     h.AbortTest()
                     break;
-
+        l.release()
         return True
 
     def imageBySerial(self, serials = [], image=None): #applies an image on the drives matching the input serials
@@ -172,25 +181,25 @@ class ListModel:
 
                     elif command == 'erase':
                         if(self.eraseBySerial(data)):
-                            client.send('success')
+                            client.send(('success', command))
                         else:
                             client.send('error')
 
                     elif command == 'shorttest':
                         if(self.shortTestBySerial(data)):
-                            client.send('success')
+                            client.send(('success', command))
                         else:
                             client.send('error')
 
                     elif command == 'longtest':
                         if(self.longTestBySerial(data)):
-                            client.send('success')
+                            client.send(('success', command))
                         else:
                             client.send('error')
 
                     elif command == 'aborttest':
                         if(self.abortTestBySerial(data)):
-                            client.send('success')
+                            client.send(('success', command))
                         else:
                             client.send('error')
 
@@ -201,9 +210,10 @@ class ListModel:
                         if(len(self.hdds) == 0):
                             client.send(None)
                         else:
-                            client.send(self.hdds)
+                            client.send(('hdds', self.hdds))
 
                     else:
+                        client.send('error')
                         pass #Unknown command
             else:
                 pass #Message wasn't a tuple
@@ -211,7 +221,7 @@ class ListModel:
 
     def updateLoop(self):
         '''
-        This loop should be run in a separate thread.
+        This loop should be run in a separate thread. Good luck not doing that.
         '''
         print("Update thread running")
         smart_coldcall_interval = 30.0 #seconds
@@ -219,7 +229,7 @@ class ListModel:
         while self._loopgo:
             busy = False
             for hdd in self.hdds:
-                if(hdd.status == Hdd.STATUS_LONGTST) or (hdd.status == Hdd.STATUS_TESTING): #If we're testing, queue the smart data to update the progress
+                if(hdd.status == HealthStatus.LongTesting) or (hdd.status == HealthStatus.ShortTesting): #If we're testing, queue the smart data to update the progress
                     if(time.time() - hdd._smart_last_call > smart_call_interval):
                         try:
                             hdd.UpdateSmart()
@@ -320,7 +330,7 @@ class ListModel:
         plist = proc.core.find_processes()
         for p in plist:
             for cmdlet in p.cmdline:
-                if name in cmdlet:
+                if name in cmdlet and not 'smartct' in p.exe:
                     print("Found process " + str(p) + " containing name " + str(name) + " in cmdline.")
                     return p
         #print("No process found for " + str(name) + ".")
