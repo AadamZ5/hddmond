@@ -62,7 +62,7 @@ class ListModel:
         self.gclient = graphqlclient.GraphQLClient('http://172.23.2.202:4000')
         
 
-        self.serverAddress = ('localhost', 63962)
+        self.serverAddress = ('localhost', 63963) #63962 for stable, 63963 for testing
 
         self.clientlist = [] #list of (client, addr)
         

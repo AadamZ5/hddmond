@@ -168,7 +168,7 @@ class Application(object):
 
         self.daemonCommGo = True
         print("Connecting to server...")
-        self.daemonAddress = ('localhost', 63962)
+        self.daemonAddress = ('localhost', 63963)
         self.daemonKey = b'H4789HJF394615R3DFESZFEZCDLPOQ'
         try:
             client = ipc.Client(self.daemonAddress, authkey=self.daemonKey)

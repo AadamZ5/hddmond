@@ -28,6 +28,16 @@ class HealthStatus(enum.Enum):
     def __str__(self):
         return self.name
 
+class TaskStatus(enum.Enum):
+    Idle = 0,
+    Erasing = 1,
+    External = 2,
+    Error = 3,
+    Imaging = 4,
+
+    def __str__(self):
+        return self.name
+
 class Hdd:
     """
     Class for storing data about HDDs
@@ -64,7 +74,10 @@ class Hdd:
         if(self.test != None):
             return self.test.progress
         else:
-            return self._smart._test_progress
+            if ('_test_progress' in self._smart.__dict__):
+                return self._smart._test_progress
+            else:
+                return 0
 
     def __init__(self, node: str):
         '''
@@ -148,8 +161,8 @@ class Hdd:
             self.status = HealthStatus.Passing
 
         elif(result == TestResult.FINISH_FAILED): 
-            if(self.status != HealthStatus.Failing):
-                self.status = HealthStatus.Warn #Set the drive status equal to warning if it's healh status is passing but its test failed
+            if(self._smart.assessment == 'PASS'):
+                self.status = HealthStatus.Warn
             else:
                 self.status = HealthStatus.Failing
 

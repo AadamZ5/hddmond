@@ -57,7 +57,7 @@ class Test():
         lock.acquire()
         self.result = TestResult.UNKNOWN
         if (r == 0):
-            if 'read failure' in t.status.lower():
+            if 'failure' in t.status.lower():
                 self.result = TestResult.FINISH_FAILED
                 self.passed = False
             elif 'without error' in t.status.lower():
