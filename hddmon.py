@@ -14,7 +14,7 @@ import additional_urwid_widgets as ui_special
 import pySMART
 import time
 import threading
-from hddmontools.hdd import Hdd, HddViewModel, HealthStatus
+from hddmontools.hdd import Hdd, HddViewModel, HealthStatus, TaskStatus
 from hddmontools.pciaddress import PciAddress
 from hddmontools.portdetection import PortDetection
 
@@ -100,7 +100,7 @@ class HddWidget(ui.WidgetWrap):
         else:
             self._stat.set_text((self.hdd.status, str(self.hdd.smartResult)))
         
-        if(self.hdd.taskStatus != Hdd.TASK_NONE):
+        if(self.hdd.taskStatus != TaskStatus.Idle):
             self._task.set_text((self.hdd.taskStatus, str(self.hdd.taskString)))
             self._cap.set_text((self.hdd.taskStatus, self.hdd.size))
         else:
@@ -140,10 +140,11 @@ class Application(object):
         (HealthStatus.Warn, 'black', 'yellow'),
         (HealthStatus.Unknown, 'light gray', 'dark red'),
         (HealthStatus.LongTesting, 'light magenta', 'black'),
-        (Hdd.TASK_ERASING, 'light cyan', 'black'),
-        (Hdd.TASK_NONE, 'dark gray', 'black'),
-        (Hdd.TASK_EXTERNAL, 'dark blue', 'black'),
-        (Hdd.TASK_ERROR, 'dark red', 'black')]
+        (TaskStatus.Erasing, 'light cyan', 'black'),
+        (TaskStatus.Idle, 'dark gray', 'black'),
+        (TaskStatus.External, 'dark blue', 'black'),
+        (TaskStatus.Error, 'dark red', 'black'),
+        (TaskStatus.Imaging, 'black', 'dark blue'),]
         
         self.focus_map = {
         'heading': 'focus heading',
@@ -199,7 +200,7 @@ class Application(object):
         self.LongTest = ui.AttrMap(ui.Button(('text',"Long test"), on_press=self.commandLongTest), 'line', focus_map=self.focus_map)
         self.AbortTest = ui.AttrMap(ui.Button(('text',"Abort test"), on_press=self.commandAbortTest), 'line', focus_map=self.focus_map)
         self.Erase = ui.AttrMap(ui.Button(('text',"Erase disk"), on_press=self.ShowAreYouSureDialog, user_data=[["Erase drives?"], self.commandErase]), 'line', focus_map=self.focus_map)
-        self.Clone = ui.AttrMap(ui.Button(('text',"Apply image"), on_press=self.ShowErrorDialog, user_data=["Cloning is not supported yet."]), 'line', focus_map=self.focus_map)
+        self.Clone = ui.AttrMap(ui.Button(('text',"Apply image"), on_press=self.commandImage), 'line', focus_map=self.focus_map)
         self.ExitButton = ui.AttrMap(ui.Button(('exit',"Exit"), on_press=self.exit), 'line', focus_map=self.focus_map)
 
         self.scEntries = ui.SimpleListWalker([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, ui.Divider(), self.Clone, ui.Divider(), self.ExitButton])
@@ -269,24 +270,27 @@ class Application(object):
         if(len(serialList) == 0):
             self.ShowErrorDialog(text=['No hard drives selected'])
             return
-        command = ('shorttest', serialList, None)
+        command = ('shorttest', serialList, self.resetLayout)
         self.commandQueue.append(command)
+        self.ShowLoadingDialog(text=['Starting short test(s)...'])
 
     def commandLongTest(self, *args, **kwargs):
         serialList = serialList = self._getSelectedSerials()
         if(len(serialList) == 0):
             self.ShowErrorDialog(text=['No hard drives selected'])
             return
-        command = ('longtest', serialList, None)
+        command = ('longtest', serialList, self.resetLayout)
         self.commandQueue.append(command)
+        self.ShowLoadingDialog(text=['Starting long test(s)...'])
 
     def commandAbortTest(self, *args, **kwargs):
         serialList = serialList = self._getSelectedSerials()
         if(len(serialList) == 0):
             self.ShowErrorDialog(text=['No hard drives selected'])
             return
-        command = ('aborttest', serialList, None)
+        command = ('aborttest', serialList, self.resetLayout)
         self.commandQueue.append(command)
+        self.ShowLoadingDialog(text=['Aborting test(s)...'])
 
     def commandErase(self, *args, **kwargs):
         serialList = self._getSelectedSerials()
@@ -294,6 +298,17 @@ class Application(object):
             self.ShowErrorDialog(text=['No hard drives selected'])
             return
         command = ('erase', serialList, None)
+        self.commandQueue.append(command)
+
+    def commandImage(self, *args, **kwargs):
+        serialList = self._getSelectedSerials()
+        image = 'BASE_26G'
+        if(len(args) > 1):
+            image = args[1] #args[0] is button
+        if(len(serialList) == 0):
+            self.ShowErrorDialog(text=['No hard drives selected'])
+            return
+        command = ('image ' + str(image), serialList, None)
         self.commandQueue.append(command)
 
     def processHddData(self, hdds):
@@ -422,14 +437,14 @@ class Application(object):
         self.loop.draw_screen()
         self.stop()
 
-    def ShowLoadingDialog(self, button=None):
+    def ShowLoadingDialog(self, button=None, text = ['']):
 
         # Header
         header_text = ui.Text(('banner', 'Please wait'), align = 'center')
         header = ui.AttrMap(header_text, 'banner')
 
         # Body
-        body_text = ui.Text("Loading, please wait...", align = 'center')
+        body_text = ui.Text(text, align = 'center')
         body_filler = ui.Filler(body_text, valign = 'middle')
         body_padding = ui.Padding(
             body_filler,
@@ -663,8 +678,8 @@ class Application(object):
         except Exception as e:
             pass
         
-        labelColWidth = 11
-        valueColWidth = 89
+        labelColWidth = 15
+        valueColWidth = 85
 
         serial = ui.Columns([('weight', labelColWidth, ui.Text("Serial:", align='left')), ('weight',valueColWidth,ui.Text(hdd.serial))])
         model = ui.Columns([('weight', labelColWidth, ui.Text("Model:", align='left')), ('weight',valueColWidth,ui.Text(hdd.model))])
@@ -674,10 +689,15 @@ class Application(object):
 
         if hdd._smart.tests == None:
             testsNumber = ui.Columns([('weight', labelColWidth, ui.Text("Tests:", align='left')), ('weight',valueColWidth,(ui.Text("0", align='left')))])
+            testsList = ui.Columns([('weight', labelColWidth, ui.Text("...", align='left')), ('weight', valueColWidth, ui.Text(''))])
         else:
             testsNumber = ui.Columns([('weight', labelColWidth, ui.Text("Tests:", align='left')), ('weight',valueColWidth,(ui.Text(str(len(hdd._smart.tests)), align='left')))])
+            testObjs = []
+            for t in hdd._smart.tests:
+                testObjs.append(ui.Text(str(t)))
+            testsList = ui.Columns([('weight', labelColWidth, ui.Text("...", align='left')), ('weight', valueColWidth, ui.BoxAdapter(ui.ListBox(ui.SimpleListWalker(testObjs)), 10))])
 
-        pile = ui.Pile([serial,model,size,medium,testsNumber,currentStatus])
+        pile = ui.Pile([serial,model,size,medium,testsNumber,testsList,currentStatus])
         line = ui.LineBox(ui.Filler(pile))
 
         title = ui.Text((hdd.status, str(hdd.serial) + " info: "))

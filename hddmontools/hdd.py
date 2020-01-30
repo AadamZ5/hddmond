@@ -6,6 +6,7 @@ import datetime
 import enum
 from .pciaddress import PciAddress
 from .test import Test, TestResult
+from .task import EraseTask, ImageTask
 import proc.core
 
 debug = False
@@ -42,11 +43,6 @@ class Hdd:
     """
     Class for storing data about HDDs
     """
-
-    TASK_ERASING = 'taskerase'
-    TASK_NONE = 'tasknone'
-    TASK_EXTERNAL = 'taskextern'
-    TASK_ERROR = 'taskerror'
 
     def __getstate__(self):
         # Copy the object's state from self.__dict__ which contains
@@ -94,12 +90,11 @@ class Hdd:
         self._smart = pySMART.Device(self.node)
         self.Port = None
         self.CurrentTask = None
-        self.CurrentTaskStatus = Hdd.TASK_NONE
+        self.CurrentTaskStatus = TaskStatus.Idle
         self.CurrentTaskReturnCode = None
         self.Size = self._smart.capacity
         self._smart_last_call = time.time()
-        self.medium = None
-        self._smart.tests
+        self.medium = None #SSD or HDD
         self.status = HealthStatus.Default
 
         #Check interface
@@ -114,6 +109,7 @@ class Hdd:
                 #self.testProgress = self._smart._test_progress
                 if not (self.status == HealthStatus.ShortTesting) or (self.status == HealthStatus.LongTesting):
                     self.status = HealthStatus.LongTesting #We won't know if this is a short or long test, so assume it can be long for sake of not pissing off the user.
+                    self.test = Test(self._smart, Test.Existing, callback=self._testCompletedCallback)
                 else:
                     pass
             
@@ -161,10 +157,7 @@ class Hdd:
             self.status = HealthStatus.Passing
 
         elif(result == TestResult.FINISH_FAILED): 
-            if(self._smart.assessment == 'PASS'):
-                self.status = HealthStatus.Warn
-            else:
-                self.status = HealthStatus.Failing
+            self.status = HealthStatus.Failing
 
         elif(result == TestResult.ABORTED):
             self.status = HealthStatus.Default
@@ -177,7 +170,6 @@ class Hdd:
             c = self.testCallbacks.pop(i)
             c(result)
         
-
     def ShortTest(self, callback=None):
         self.status = HealthStatus.ShortTesting
         if(callback != None):
@@ -188,15 +180,30 @@ class Hdd:
         self.status = HealthStatus.LongTesting
         if(callback != None):
             self.testCallbacks.append(callback)
+        self.test = Test(self._smart, 'long', pollingInterval=5, callback=self._testCompletedCallback)
 
     def AbortTest(self):
         if(self.test != None):
-            self.test.Abort()
+            self.test.abort()
+
+    def _taskCompletedCallback(self, returncode):
+        if(returncode != 0):
+            self.CurrentTaskStatus = TaskStatus.Error
+        else:
+            self.CurrentTaskStatus = TaskStatus.Idle
 
     def Erase(self, callback=None):
-        if(self.CurrentTask == None):
-            self.CurrentTask = subprocess.Popen(['scrub', '-f', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-            self.CurrentTaskStatus = Hdd.TASK_ERASING
+        if(self.CurrentTaskStatus == TaskStatus.Idle or self.CurrentTaskStatus == TaskStatus.Error):
+            self.CurrentTask = EraseTask(self.node, self.Size.replace('GB', '').strip(), callback=self._taskCompletedCallback)
+            self.CurrentTaskStatus = TaskStatus.Erasing
+            return True #We started the task sucessfully
+        else:
+            return False #There is a task running on this hdd. cancel it first
+
+    def Image(self, image, callback=None):
+        if(self.CurrentTaskStatus == TaskStatus.Idle or self.CurrentTaskStatus == TaskStatus.Error):
+            self.CurrentTask = ImageTask(image, self.name, self._taskCompletedCallback)
+            self.CurrentTaskStatus = TaskStatus.Imaging
             return True #We started the task sucessfully
         else:
             return False #There is a task running on this hdd. cancel it first
@@ -210,78 +217,28 @@ class Hdd:
         return p + "%"
     
     def GetTaskProgressString(self):
-        if(self.CurrentTaskStatus == Hdd.TASK_ERASING):
-            return "Erasing"
-        elif(self.CurrentTaskStatus == Hdd.TASK_NONE):
+        if(self.CurrentTask != None) and (self.CurrentTaskStatus != TaskStatus.Idle):
+            if(self.CurrentTaskStatus == TaskStatus.Error):
+                return "Err: " + str(self.CurrentTask._returncode)
+            elif(self.CurrentTask.Finished):
+                return "Done"
+            elif(self.CurrentTaskStatus == TaskStatus.Erasing):
+                return str(self.CurrentTask.Progress) + "%"
+            elif(self.CurrentTaskStatus == TaskStatus.External):
+                return "PID: " + str(self.CurrentTask.PID)
+            else:
+                return "Busy"
+                
+        else:
             return "Idle"
-        elif(self.CurrentTaskStatus == Hdd.TASK_EXTERNAL):
-            if(type(self.CurrentTask) == proc.core.Process):
-                return "PID " + str(self.CurrentTask.pid)
-        elif(self.CurrentTaskStatus == Hdd.TASK_ERROR):
-            return "Err: " + str(self.CurrentTaskReturnCode)
-        else:
-            return "???"
-
-    def _getRemainingTime(self):
-        complete = self.estimatedCompletionTime
-        now = datetime.datetime.now()
-        if complete > now:
-            timedeltaLeft = (complete - now)
-            mm, ss = divmod(timedeltaLeft.total_seconds(), 60)
-            hh, mm = divmod(mm, 60)
-            s = "%d:%02d:%02d" % (hh, mm, ss)
-            return s
-        else:
-            return "0:00:00"
 
     def UpdateSmart(self):
         self._smart.update()
         #print(self._smart._test_running)
-
-    def UpdateTask(self):
-        if(self.CurrentTaskStatus != Hdd.TASK_NONE) and (self.CurrentTaskStatus != Hdd.TASK_ERROR):
-            logwrite(str(self.serial) + ": Task running! Task type: " + self.CurrentTaskStatus)
-        else:
-            if(self.CurrentTask != None):
-                if(type(self.CurrentTask) == proc.core.Process):
-                    if(self.CurrentTask.is_alive):
-                        pass
-                    else:
-                        self.CurrentTask = None
-                        self.CurrentTaskStatus = Hdd.TASK_NONE
-            else:
-                logwrite(str(self.serial) + ": No task running.")
-        
-        if(self.CurrentTaskStatus == Hdd.TASK_ERASING):
-            if(self.CurrentTask != None):
-                r = self.CurrentTask.poll() #Returns either a return code, or 'None' type if the process isn't finished.
-                self.CurrentTaskReturnCode = r
-                if(r != None):
-                    if(r == 0):
-                        self.CurrentTaskStatus == Hdd.TASK_NONE
-                        self.CurrentTask = None
-                    else:
-                        self.CurrentTaskStatus = Hdd.TASK_ERROR
-                        self.CurrentTask = None
-                else:
-                    pass #Its still running
-                    #logwrite("Task running: " + str(self.CurrentTask.pid))
-            else:
-                self.CurrentTaskStatus = Hdd.TASK_NONE
-        elif(self.CurrentTaskStatus == Hdd.TASK_EXTERNAL):
-            if(type(self.CurrentTask) == proc.core.Process):
-                if(self.CurrentTask.is_alive):
-                    pass
-                else:
-                    self.CurrentTask = None
-                    self.CurrentTaskStatus = Hdd.TASK_NONE
-        else:
-            pass
                 
     def refresh(self):
         pass
             
-
     def __str__(self):
         if(self.serial):
             return self.serial
