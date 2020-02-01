@@ -157,7 +157,7 @@ class Application(object):
         self.commandQueue = [] #format (command, serials, extradata, callback)
         self.hddobjs = []
         self.hddEntries = ui.SimpleListWalker([])
-        
+        self.images = []
         self.buildControls()
 
         self.loop = ui.MainLoop(self.MainFrame, self.palette, pop_ups=True, unhandled_input=self.unhandled_input)
@@ -166,7 +166,7 @@ class Application(object):
         ui.connect_signal(self.Terminal, 'closed', callback=self._reinitializeTerminal)
 
         self.bigBoxes = [self.HddListUi, self.SubControls, self.Htop]
-
+        
         self.daemonCommGo = True
         print("Connecting to server...")
         self.daemonAddress = ('localhost', 63963)
@@ -200,10 +200,11 @@ class Application(object):
         self.LongTest = ui.AttrMap(ui.Button(('text',"Long test"), on_press=self.commandLongTest), 'line', focus_map=self.focus_map)
         self.AbortTest = ui.AttrMap(ui.Button(('text',"Abort test"), on_press=self.commandAbortTest), 'line', focus_map=self.focus_map)
         self.Erase = ui.AttrMap(ui.Button(('text',"Erase disk"), on_press=self.ShowAreYouSureDialog, user_data=[["Erase drives?"], self.commandErase]), 'line', focus_map=self.focus_map)
-        self.Clone = ui.AttrMap(ui.Button(('text',"Apply image"), on_press=self.commandImage), 'line', focus_map=self.focus_map)
+        self.Clone = ui.AttrMap(ui.Button(('text',"Apply image"), on_press=self.GetTheImages, user_data={'callback': self.GotTheImages}), 'line', focus_map=self.focus_map)
+        self.AbortTask = None
         self.ExitButton = ui.AttrMap(ui.Button(('exit',"Exit"), on_press=self.exit), 'line', focus_map=self.focus_map)
 
-        self.scEntries = ui.SimpleListWalker([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, ui.Divider(), self.Clone, ui.Divider(), self.ExitButton])
+        self.scEntries = ui.SimpleListWalker([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, self.Clone, ui.Divider(), self.ExitButton])
         self.SubControls = ui_special.IndicativeListBox(self.scEntries)
         self.SubControls = ui.LineBox(self.SubControls)
         self.SubControls = ui.AttrMap(self.SubControls, None, focus_map='focus border')
@@ -265,6 +266,21 @@ class Application(object):
             self.terminalBorder.set_focus_map({None: 'focus border'})
         loop.set_alarm_in(0.5, self._checkTerminalFocus, user_data=None)
 
+    def GetTheImages(self, *args, **kwargs):
+        self.ShowLoadingDialog(text=['Getting images...'])
+        self.loop.draw_screen()
+        self.commandGetImages(callback=self.GotTheImages)
+
+    def GotTheImages(self, *args, **kwargs):
+        self.processImages(args[0][1])
+        self.ShowImagePickDialog(args=[self.images, self.commandImage])
+
+    def commandGetImages(self, *args, **kwargs):
+        callback = None
+        if 'callback' in kwargs:
+            callback = kwargs['callback']
+        self.commandQueue.append(('getimages', None, callback))
+
     def commandShortTest(self, *args, **kwargs):
         serialList = self._getSelectedSerials()
         if(len(serialList) == 0):
@@ -302,13 +318,15 @@ class Application(object):
 
     def commandImage(self, *args, **kwargs):
         serialList = self._getSelectedSerials()
-        image = 'BASE_26G'
-        if(len(args) > 1):
-            image = args[1] #args[0] is button
+        image = None
+        if(len(args) > 0):
+            image = args[0]
         if(len(serialList) == 0):
             self.ShowErrorDialog(text=['No hard drives selected'])
             return
-        command = ('image ' + str(image), serialList, None)
+        if(image == None):
+            return
+        command = ('image ' + str(image.name), serialList, None)
         self.commandQueue.append(command)
 
     def processHddData(self, hdds):
@@ -348,6 +366,9 @@ class Application(object):
             hddwidget = HddWidget(hvm, self)
             self.hddEntries.append(hddwidget)
 
+    def processImages(self, images):
+        self.images = images
+ 
     def daemonComm(self, me=None):
         while self.daemonCommGo and ('me' in locals()):
             if(len(self.commandQueue) == 0):
@@ -373,6 +394,8 @@ class Application(object):
                     if(type(data) == tuple):
                         if(data[0] == 'hdds'):
                             self.processHddData(data[1])
+                        if(data[0] == 'images'):
+                            self.processImages(data[1])
                         elif(data[0] == 'error'):
                             pass
                         elif(data[0] == 'success'):
@@ -415,7 +438,7 @@ class Application(object):
         ui.connect_signal(self.Terminal, 'closed', callback=self._reinitializeTerminal)
 
     def resetLayout(self, button=None, t=None):
-        #t should be (bool, truecallback, falsecallback) or None
+        #t should be (bool, truecallback, falsecallback, data) or None
         self.MainFrame = ui.Pile([self.Top, self.Htop])
         self.loop.widget = self.MainFrame
 
@@ -424,11 +447,17 @@ class Application(object):
                 if(len(t) > 1):
                     if(t[0]): #if bool is true
                         if(t[1]):
-                            t[1]() #true callback
+                            if(len(t) > 3):
+                                t[1](t[3])
+                            else:
+                                t[1]() #true callback
                     else:
                         if(len(t) > 2): #if there even is a false callback
                             if(t[2]): #if the third item isn't None
-                                t[2]() #false callback
+                                if(len(t) > 3):
+                                    t[2](t[3])
+                                else:
+                                    t[2]() #false callback
             else:
                 pass
 
@@ -707,6 +736,69 @@ class Application(object):
 
         frame = ui.Frame(body=line, header=title, footer=foot, focus_part='footer')
         self.loop.widget = frame
+
+    def ShowImagePickDialog(self, button=None, args = []):
+        
+        #args is a [[DiskImage, DiskImage], callback]
+        text = 'Which image?'
+
+        callback = None
+        if(len(args) > 1):
+            yescallback = args[1]
+            
+        if(len(args) > 2):
+            nocallback = args[2]
+        else:
+            nocallback = None
+
+        imgs = []
+        for image in args[0]:
+            button = ui.Button(image.name, on_press=self.resetLayout, user_data=(True, yescallback, nocallback, image))
+            imgs.append(button)
+
+        # Header
+        header_text = ui.Text(('banner', 'Choose an option'), align = 'center')
+        header = ui.AttrMap(header_text, 'banner')
+
+        # Body
+        cancel = ui.Button('Cancel', self.resetLayout, user_data=(False, yescallback, nocallback))
+        cancel = ui.AttrWrap(cancel, 'selectable', 'focus')
+        cancel = ui.Filler(cancel, valign='middle')
+
+        body_text = ui.Text(text, align = 'center')
+        body_filler = ui.Filler(body_text, valign = 'middle')
+        body_list = ui_special.IndicativeListBox(ui.SimpleFocusListWalker(imgs))
+        body_contents = ui.Pile([body_filler, body_list, cancel])
+        body_padding = ui.Padding(
+            body_contents,
+            left = 1,
+            right = 1
+        )
+        body = ui.LineBox(body_padding)
+
+        # Footer
+        cancel = ui.Button('Cancel', self.resetLayout, user_data=(False, yescallback, nocallback))
+        cancel = ui.AttrWrap(cancel, 'selectable', 'focus')
+        footer = ui.Columns([cancel])
+        footer = ui.GridFlow([footer], 20, 1, 1, 'center')
+
+        # Layout
+        layout = ui.Frame(
+            body,
+            header = header,
+            focus_part = 'body'
+        )
+
+        w = ui.Overlay(
+            ui.LineBox(layout),
+            self.Top,
+            align = 'center',
+            width = 75,
+            valign = 'middle',
+            height = 20
+        )
+        self.MainFrame = ui.Pile([w, self.Htop])
+        self.loop.widget = self.MainFrame
 
     def start(self):
         self.daemonCommThread.start()

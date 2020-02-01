@@ -1,3 +1,4 @@
+import os
 import enum
 import subprocess
 import proc
@@ -67,7 +68,7 @@ class ExternalTask(Task):
         self._finished = False
         self._poll = True
         self._pollingInterval = pollingInterval
-        self._pollingThread = threading.Thread(target=self._pollProcess)
+        self._pollingThread = threading.Thread(target=self._pollProcess, name=str(self.PID) + "_pollingThread")
         super(ExternalTask, self).__init__("External")
         self._progressString = "PID " + str(self.PID)
         self._pollingThread.start()
@@ -115,7 +116,7 @@ class EraseTask(Task):
         self._started = False
         self._returncode = None
         self._pollingInterval = pollingInterval
-        self._pollingThread = threading.Thread(target=self._monitorProgress)
+        self._pollingThread = threading.Thread(target=self._monitorProgress, name=str(node) + "_eraseTask")
         self._subproc = subprocess.Popen(['scrub', '-f', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         self._PID = self._subproc.pid
         self._procview = proc.core.Process.from_pid(self._PID)
@@ -178,39 +179,64 @@ class ImageTask(Task):
         self.__dict__.update(state)
 
     def __init__(self, image: DiskImage, diskname, callback=None, pollingInterval=5):
-        self._subproc = subprocess.Popen(['/usr/sbin/ocs-sr', '-e1 auto', '-e2', '-nogui', '-batch', '-r', '-irhr', '-ius', '-icds', '-j2', '-cmf', '-k1', '-scr', '-p true', 'restoredisk', image.name, diskname], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        self._subproc = subprocess.Popen(['/usr/sbin/ocs-sr', '-e1', 'auto', '-e2', '-nogui', '-batch', '-r', '-irhr', '-ius', '-icds', '-j2', '-k', '-scr', '-p', 'command', 'restoredisk', image.name, diskname], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         self._PID = self._subproc.pid
         self._returncode = None
         self._partclone_procview = None
         self._md5sum_procview = None
-        self._proctree = get_process_tree().find(pid=self._PID)
-
+        self._proctree = get_process_tree().find(pid=self._PID, recursive=True)
         self._callback = callback
-
+        self._cloning = False
+        self._checking = False
         self._poll = True
         self._pollingInterval = pollingInterval
-        self._pollingThread = threading.Thread(target=self._monitor)
+        self._pollingThread = threading.Thread(target=self._monitor, name=str(diskname) + "_cloneTask")
         super(ImageTask, self).__init__("Image")
+        self._progressString = "Imaging"
         self._pollingThread.start()
-
-        self._stage = 'cloning'
-            
         
     def _monitor(self):
-        while self._poll == True and self._returncode == None:
-            # for p in self._proctree.descendants:
-            #     if(self._stage == 'cloning') and self._partclone_procview != None:
-            #         if 'partclone.ntfs' in p.cmdline:
-            #             self._partclone_procview = p
-            #     elif(self._stage == 'checking') and self._md5sum_procview != None:
-            #         if 'md5sum' in p.cmdline:
-            #             self._md5sum_procview = p
-            self._returncode = self._subproc.poll()
+        while self._poll == True and self._partclone_procview == None:
             time.sleep(self._pollingInterval)
-        
+            self._check_subproc()
+            p = self._proctree.find(exe_name='partclone.ntfs', recursive=True)
+            if p != None:
+                self._partclone_procview = p
+                self._progressString = "Cloning"
+                self._cloning = True
+
+        while self._cloning == True and self._poll == True:
+            time.sleep(self._pollingInterval)
+            self._check_subproc()
+            if(self._partclone_procview.is_alive == False):
+                self._cloning = False
+
+        while self._poll == True and self._md5sum_procview == None:
+            time.sleep(self._pollingInterval)
+            self._check_subproc()
+            p = self._proctree.find(exe_name='md5sum', recursive=True)
+            if p != None:
+                self._md5sum_procview = p
+                self._progressString = "Checking"
+                self._checking = True
+
+        while self._checking == True and self._poll == True:
+            time.sleep(self._pollingInterval)
+            self._check_subproc()
+            if(self._md5sum_procview.is_alive == False):
+                self._checking = False
+
+        while self._poll:
+            time.sleep(self._pollingInterval)
+            self._check_subproc()
+
         if(self._callback != None):
             self._callback(self._returncode)
-            
+
+    def _check_subproc(self):
+        self._returncode = self._subproc.poll()
+        if(self._returncode != None):
+            self._poll = False  
             
                 
             

@@ -65,12 +65,12 @@ class ListModel:
         self.monitor = pyudev.Monitor.from_netlink(context)
         self.monitor.filter_by(subsystem='block', device_type='disk')
         self.PortDetector = hddmontools.portdetection.PortDetection()
-        self.AutoShortTest = True
+        self.AutoShortTest = False
         self.updateDevices(bootDiskNode)
         self.loadDiskImages()
         self._loopgo = True
         self.stuffRunning = False
-        self.updateThread = threading.Thread(target=self.updateLoop)
+        self.updateThread = threading.Thread(target=self.updateLoop, name="HddUpdateThread")
         self.gclient = graphqlclient.GraphQLClient('http://172.23.2.202:4000')
         
         self.serverAddress = ('localhost', 63963) #63962 for stable, 63963 for testing
@@ -235,7 +235,10 @@ class ListModel:
                         else:
                             client.send('error')
 
-                    elif 'image' in command:
+                    elif command == 'getimages':
+                        client.send(('images', self.images))
+
+                    elif 'image' in command and not command == 'getimages':
                         image = command.split()[1]
                         if(self.imageBySerial(data, image)):
                             client.send(('success', command))
