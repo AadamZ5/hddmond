@@ -14,7 +14,8 @@ import additional_urwid_widgets as ui_special
 import pySMART
 import time
 import threading
-from hddmontools.hdd import Hdd, HddViewModel, HealthStatus, TaskStatus
+from hddmontools.hdd import Hdd, HddViewModel, HealthStatus, TaskStatus, HddManager
+from hddmontools.task import TaskQueue
 from hddmontools.pciaddress import PciAddress
 from hddmontools.portdetection import PortDetection
 
@@ -55,6 +56,53 @@ class TestEntryNode(ui.TreeNode):
     def load_widget(self):
         return HddTestEntryTreeWidget(self)
 
+class TaskQueueWidget(ui.WidgetWrap):
+    def __init__(self, serial, TaskQueue: TaskQueue, task_up_cb=None, task_dn_cb=None, task_del_cb=None):
+        self._rows_ = []
+        self._tq = TaskQueue
+        self._t_u_cb = task_up_cb
+        self._t_d_cb = task_dn_cb
+        self._t_r_cb = task_del_cb
+        self._serial = serial
+        self._gen_rows()
+        self._listwalker = ui.SimpleFocusListWalker(self._rows_)
+        self._list = ui_special.IndicativeListBox(self._listwalker)
+        self._box = ui.LineBox(self._list)
+        self._paused = not self._tq.Pause
+        self._frame = ui.Frame(self._box, header=ui.Button(('Pause' if not self._tq.Pause else 'Unpause'), on_press=self._pause, user_data=self._paused))
+        super(TaskQueueWidget, self).__init__(self._list)
+
+    def _gen_rows(self):
+        self._rows_.clear()
+        for i in range(len(self._tq.Queue)):
+            task = self._tq.Queue[i][1]
+            bup = ui.Button('▲', on_press=self._taskup, user_data=i)
+            bdn = ui.Button('▼', on_press=self._taskdown, user_data= i)
+            babrt = ui.Button('X', on_press=self._taskdel, user_data=i)
+            name = ui.Text(task.name)
+            col = ui.Columns([name, (5,bup),(5,bdn),(5,babrt)])
+            self._rows_.append(col)
+        self._rows_.reverse()
+        self._listwalker = ui.SimpleFocusListWalker(self._rows_)
+
+
+    def _taskup(self, button, index=None, *args, **kwargs):
+        if(self._t_u_cb != None and callable(self._t_u_cb)):
+            self._t_u_cb(index=index, callback=self._cb, serial=self._serial)
+
+    def _taskdown(self, button, index=None, *args, **kwargs):
+        if(self._t_d_cb != None and callable(self._t_d_cb)):
+            self._t_d_cb(index=index, callback=self._cb, serial=self._serial)
+
+    def _taskdel(self, button, index=None, *args, **kwargs):
+        if(self._t_r_cb != None and callable(self._t_r_cb)):
+            self._t_r_cb(index=index, callback=self._cb, serial=self._serial)
+
+    def _cb(self, *args, **kwargs):
+        pass
+
+    def _pause(self, button, pause):
+        pass
 
 class HddWidget(ui.WidgetWrap):
     def __init__(self, hdd: HddViewModel, app):
@@ -101,7 +149,7 @@ class HddWidget(ui.WidgetWrap):
             self._stat.set_text((self.hdd.status, str(self.hdd.smartResult)))
         
         if(self.hdd.taskStatus != TaskStatus.Idle):
-            self._task.set_text((self.hdd.taskStatus, str(self.hdd.taskString)))
+            self._task.set_text((self.hdd.taskStatus, str(self.hdd.taskString) + (" (" + str(self.hdd.taskQueueSize) + ")" if self.hdd.taskQueueSize > 0 else "")))
             self._cap.set_text((self.hdd.taskStatus, self.hdd.size))
         else:
             self._task.set_text((self.hdd.taskStatus, str(self.hdd.taskString)))
@@ -111,6 +159,80 @@ class HddWidget(ui.WidgetWrap):
         return self._main.get_attr_map()
     def set_attr_map(self, attr):
         return self._main.set_attr_map(attr)
+
+class Commander:
+    def __init__(self, address, key):
+        self.daemonAddress = address
+        self.daemonKey = key
+        self.commandQueue = []
+        self._daemon_comm = True
+        self.connection = None
+        try:
+            self.connection = ipc.Client(self.daemonAddress, authkey=self.daemonKey)
+        except Exception as e:
+            print("A connection could not be established to the testing server: \n" + str(e))
+            exit(1)
+        print("Connected!")
+        self._curr_cmd = None
+        self._queue_thread = None
+
+        try:
+            self.client = ipc.Client(self.daemonAddress, authkey=self.daemonKey)
+        except Exception as e:
+            print("A connection could not be established to the testing server: \n" + str(e))
+            exit(1)
+        self._daemon_thread = threading.Thread(target=self.daemonComm, args=(self.client), name='commanding_thread')
+
+    def send_command(self, command, data={}, callback=None, *args, **kwargs):
+        if(self.connection.closed != True):
+            cb = callback
+            self.commandQueue.append((str(command), data, cb))
+            if(len(self.commandQueue) == 1 and self._curr_cmd == None): #We added the first task of this chain-reaction. Kick off the queue.
+                self._create_queue_thread()
+            return True
+        else:
+            return False
+
+    def _create_queue_thread(self):
+        self._queue_thread = threading.Thread(target=self.daemonComm)
+        self._queue_thread.start()
+
+    def stop(self):
+        self._daemon_comm = False
+        self.commandQueue.clear()
+        try:
+            if('connection' in self.__dict__):
+                self.connection.close()
+            else:
+                pass
+        except Exception as e:
+            pass
+
+    def daemonComm(self):
+        while self._daemon_comm and ('connection' in self.__dict__) and (len(self.commandQueue) > 0 or self._curr_cmd != None ):
+            if(len(self.commandQueue) == 0):
+                pass
+            else:
+                if not len(self.commandQueue) > 0:
+                    continue
+                t = self.commandQueue.pop()
+                cmd = (t[0],t[1]) #(command, data, callback)
+                if(len(t) >2):
+                    callback = t[2]
+                else:
+                    callback = None
+                self.connection.send(cmd)
+                try:
+                    data = self.connection.recv()#blocking call
+                except EOFError:
+                    data = None
+                    del self.connection
+                    break
+                if(data != None):
+                    if(callback) and callable(callback):
+                        callback(data)
+        
+commander = Commander(('localhost', 63963), b'H4789HJF394615R3DFESZFEZCDLPOQ')
 
 class Application(object):
     def __init__(self):
@@ -162,23 +284,10 @@ class Application(object):
 
         self.loop = ui.MainLoop(self.MainFrame, self.palette, pop_ups=True, unhandled_input=self.unhandled_input)
         self.Terminal.main_loop = self.loop
-        self.loop.set_alarm_in(0.5, self._checkTerminalFocus, user_data=None)
+        self.loop.set_alarm_in(0.5, self._update, user_data=None)
         ui.connect_signal(self.Terminal, 'closed', callback=self._reinitializeTerminal)
 
         self.bigBoxes = [self.HddListUi, self.SubControls, self.Htop]
-        
-        self.daemonCommGo = True
-        print("Connecting to server...")
-        self.daemonAddress = ('localhost', 63963)
-        self.daemonKey = b'H4789HJF394615R3DFESZFEZCDLPOQ'
-        try:
-            client = ipc.Client(self.daemonAddress, authkey=self.daemonKey)
-        except Exception as e:
-            print("A connection could not be established to the testing server: \n" + str(e))
-            exit(1)
-        print("Connected!")
-        self.daemonCommThread = threading.Thread(target=self.daemonComm, kwargs={'me': client})
-
         self._all_selected = False
     
     def buildControls(self):
@@ -196,15 +305,15 @@ class Application(object):
         self.terminalBorder = ui.AttrMap(self.terminalBorder, None, focus_map='focus border')
         self.Htop = ui.Frame(header=ui.Text("HTOP ('tab' to escape)", align='center', wrap='clip'), body=self.terminalBorder)
 
-        self.ShortTest = ui.AttrMap(ui.Button(('text',"Short test"), on_press=self.commandShortTest), 'line', focus_map=self.focus_map)
-        self.LongTest = ui.AttrMap(ui.Button(('text',"Long test"), on_press=self.commandLongTest), 'line', focus_map=self.focus_map)
-        self.AbortTest = ui.AttrMap(ui.Button(('text',"Abort test"), on_press=self.commandAbortTest), 'line', focus_map=self.focus_map)
-        self.Erase = ui.AttrMap(ui.Button(('text',"Erase disk"), on_press=self.ShowAreYouSureDialog, user_data=[["Erase drives?"], self.commandErase]), 'line', focus_map=self.focus_map)
+        self.ShortTest = ui.AttrMap(ui.Button(('text',"Short test"), on_press=self._send_command, user_data={'command': 'shorttest', 'data': self._getSelectedSerials, 'loading_message': 'Starting short test(s)...', 'callback': self.resetLayout}), 'line', focus_map=self.focus_map)
+        self.LongTest = ui.AttrMap(ui.Button(('text',"Long test"), on_press=self._send_command, user_data={'command': 'longtest', 'data': self._getSelectedSerials, 'loading_message': 'Starting long test(s)...', 'callback': self.resetLayout}), 'line', focus_map=self.focus_map)
+        self.AbortTest = ui.AttrMap(ui.Button(('text',"Abort test"), on_press=self._send_command, user_data={'command': 'aborttest', 'data': self._getSelectedSerials, 'loading_message': 'Aborting test(s)...', 'callback': self.resetLayout}), 'line', focus_map=self.focus_map)
+        self.Erase = ui.AttrMap(ui.Button(('text',"Erase disk"), on_press=self.ShowAreYouSureDialog, user_data=[["Erase drives?"], self._erase]), 'line', focus_map=self.focus_map)
         self.Clone = ui.AttrMap(ui.Button(('text',"Apply image"), on_press=self.GetTheImages, user_data={'callback': self.GotTheImages}), 'line', focus_map=self.focus_map)
-        self.AbortTask = None
+        self.AbortTask = ui.AttrMap(ui.Button(('text',"Abort task"), on_press=self.ShowAreYouSureDialog, user_data=[["Abort task?\n", 'This will terminate external processes!'], self._abort_task]), 'line', focus_map=self.focus_map)
         self.ExitButton = ui.AttrMap(ui.Button(('exit',"Exit"), on_press=self.exit), 'line', focus_map=self.focus_map)
 
-        self.scEntries = ui.SimpleListWalker([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, self.Clone, ui.Divider(), self.ExitButton])
+        self.scEntries = ui.SimpleListWalker([self.ShortTest, self.LongTest, self.AbortTest, ui.Divider(), self.Erase, self.Clone, self.AbortTask, ui.Divider(), self.ExitButton])
         self.SubControls = ui_special.IndicativeListBox(self.scEntries)
         self.SubControls = ui.LineBox(self.SubControls)
         self.SubControls = ui.AttrMap(self.SubControls, None, focus_map='focus border')
@@ -214,6 +323,14 @@ class Application(object):
 
         self.MainFrame = ui.Pile([self.Top, self.Htop])
         self.MainFrame = ui.Filler(self.MainFrame, 'middle', 80)
+
+    def _update(self, loop, userargs, *args, **kwargs):
+        self._poll_daemon()
+        self._checkTerminalFocus(loop, userargs)
+        loop.set_alarm_in(0.5, self._update)
+
+    def _poll_daemon(self, *args, **kwargs):
+        commander.send_command('hdds', callback=self.processHddData)
 
     def unhandled_input(self, key, *args, **kwargs):
         k = str(key).lower().strip()
@@ -257,64 +374,43 @@ class Application(object):
             if hw.checked == True:
                 serials.append(hw.hdd.serial)
 
-        return serials
+        return {'serials': serials}
 
     def _checkTerminalFocus(self, loop, user_data):
         if self.Terminal.keygrab:
             self.terminalBorder.set_focus_map({None: 'active border'})
         else:
             self.terminalBorder.set_focus_map({None: 'focus border'})
-        loop.set_alarm_in(0.5, self._checkTerminalFocus, user_data=None)
+        #loop.set_alarm_in(0.5, self._checkTerminalFocus, user_data=None)
+
+    def _send_command(self, button=None, userargs={}):
+        
+        command = userargs.get('command', None)
+        if command is None:
+            return
+        data = userargs.get('data', None)
+        if callable(data):
+            data = data()
+        callback = userargs.get('callback', None)
+        loadingmsg = userargs.get('loading_message', None)
+        commander.send_command(command, data=data, callback=callback)
+        self.ShowLoadingDialog(text=[loadingmsg if loadingmsg != None else 'Loading...'])
+
+    def _erase(self, button=None, *args, **kwargs):
+        self._send_command(userargs={'command': 'erase', 'data': self._getSelectedSerials, 'callback': self.resetLayout, 'loading_message': 'Starting erase task(s)...'})
+
+    def _abort_task(self, button=None, *args, **kwargs):
+        self._send_command(userargs={'command': 'aborttask', 'data': self._getSelectedSerials, 'callback': self.resetLayout, 'loading_message': 'Aborting task(s)...'})
 
     def GetTheImages(self, *args, **kwargs):
         self.ShowLoadingDialog(text=['Getting images...'])
         self.loop.draw_screen()
-        self.commandGetImages(callback=self.GotTheImages)
+        commander.send_command('getimages', callback=self.GotTheImages)
 
     def GotTheImages(self, *args, **kwargs):
         self.processImages(args[0][1])
         self.ShowImagePickDialog(args=[self.images, self.commandImage])
-
-    def commandGetImages(self, *args, **kwargs):
-        callback = None
-        if 'callback' in kwargs:
-            callback = kwargs['callback']
-        self.commandQueue.append(('getimages', None, callback))
-
-    def commandShortTest(self, *args, **kwargs):
-        serialList = self._getSelectedSerials()
-        if(len(serialList) == 0):
-            self.ShowErrorDialog(text=['No hard drives selected'])
-            return
-        command = ('shorttest', serialList, self.resetLayout)
-        self.commandQueue.append(command)
-        self.ShowLoadingDialog(text=['Starting short test(s)...'])
-
-    def commandLongTest(self, *args, **kwargs):
-        serialList = serialList = self._getSelectedSerials()
-        if(len(serialList) == 0):
-            self.ShowErrorDialog(text=['No hard drives selected'])
-            return
-        command = ('longtest', serialList, self.resetLayout)
-        self.commandQueue.append(command)
-        self.ShowLoadingDialog(text=['Starting long test(s)...'])
-
-    def commandAbortTest(self, *args, **kwargs):
-        serialList = serialList = self._getSelectedSerials()
-        if(len(serialList) == 0):
-            self.ShowErrorDialog(text=['No hard drives selected'])
-            return
-        command = ('aborttest', serialList, self.resetLayout)
-        self.commandQueue.append(command)
-        self.ShowLoadingDialog(text=['Aborting test(s)...'])
-
-    def commandErase(self, *args, **kwargs):
-        serialList = self._getSelectedSerials()
-        if(len(serialList) == 0):
-            self.ShowErrorDialog(text=['No hard drives selected'])
-            return
-        command = ('erase', serialList, None)
-        self.commandQueue.append(command)
+        
 
     def commandImage(self, *args, **kwargs):
         serialList = self._getSelectedSerials()
@@ -326,12 +422,12 @@ class Application(object):
             return
         if(image == None):
             return
-        command = ('image ' + str(image.name), serialList, None)
-        self.commandQueue.append(command)
+        commander.send_command('image', data={'image': image, 'serials': serialList}, callback=self.resetLayout)
+        self.ShowLoadingDialog(text=['Starting image(s)...'])
 
-    def processHddData(self, hdds):
-        logwrite("Checking!!!")
-        logwrite("List: " + str(hdds))
+    def processHddData(self, data):
+        #data is (response, data)
+        hdds = data[1]
         self.hddobjs = hdds
         localhdds = list(hdds).copy()
         foundhdds = []
@@ -368,67 +464,8 @@ class Application(object):
 
     def processImages(self, images):
         self.images = images
- 
-    def daemonComm(self, me=None):
-        while self.daemonCommGo and ('me' in locals()):
-            if(len(self.commandQueue) == 0):
-                me.send(('listen', None, None))
-                try:
-                    data = me.recv()#blocking call
-                except EOFError as e:
-                    self.ShowErrorDialog(text=["Pipe unexpectedly closed:\n", str(e) + "\n", "The connection to the testing server may have been lost."])
-                    data = None
-                    del me
-                    break
-                except FileNotFoundError as e:
-                    self.ShowErrorDialog(text=["Server sent a device that doesnt exist:\n", str(e)])
-                    data = None
-                except pyudev.DeviceNotFoundByFileError as e:
-                    self.ShowErrorDialog(text=["Server sent a device that doesnt exist:\n", str(e)])
-                    data = None
-                except Exception as e:
-                    self.ShowErrorDialog(text=["Error\n", str(e)])
-                    data = None
-                if(data):
-                    logwrite("Got data: " + str(data))
-                    if(type(data) == tuple):
-                        if(data[0] == 'hdds'):
-                            self.processHddData(data[1])
-                        if(data[0] == 'images'):
-                            self.processImages(data[1])
-                        elif(data[0] == 'error'):
-                            pass
-                        elif(data[0] == 'success'):
-                            pass
-                else:
-                    self.processHddData([])
-            else:
-                t = self.commandQueue.pop()
-                cmd = (t[0],t[1]) #(command, data, callback, ???)
-                if(len(t) >2):
-                    callback = t[2]
-                else:
-                    callback = None
-                me.send(cmd)
-                try:
-                    data = me.recv()#blocking call
-                except EOFError as e:
-                    self.ShowErrorDialog(text=["Pipe unexpectedly closed:\n", str(e) + "\n", "The connection to the testing server may have been lost."])
-                    data = None
-                    del me
-                    break
-                if(data != None):
-                    if(callback):
-                        callback(data)
-                        
-            time.sleep(1)
-        try:
-            if('me' in locals()):
-                me.close()
-            else:
-                pass
-        except Exception as e:
-            self.ShowErrorDialog(text=["Error while closing connection:\n", str(e)])
+        self.images.reverse()
+
 
     def _reinitializeTerminal(self, loop, **kwargs):
         self.Terminal = ui.Terminal(['bash'], main_loop=self.loop, escape_sequence='tab')
@@ -726,15 +763,42 @@ class Application(object):
                 testObjs.append(ui.Text(str(t)))
             testsList = ui.Columns([('weight', labelColWidth, ui.Text("...", align='left')), ('weight', valueColWidth, ui.BoxAdapter(ui.ListBox(ui.SimpleListWalker(testObjs)), 10))])
 
-        pile = ui.Pile([serial,model,size,medium,testsNumber,testsList,currentStatus])
+
+        def task_up(*args, **kwargs):
+            index = kwargs.get('index', None)
+            cb = kwargs.get('callback', None)
+            serial = kwargs.get('serial', None)
+            action = 'up'
+            commander.send_command('modifyqueue', data={'index': index, 'action': action, 'serial': serial}, callback=cb)
+
+        def task_dn(*args, **kwargs):
+            index = kwargs.get('index', None)
+            cb = kwargs.get('callback', None)
+            serial = kwargs.get('serial', None)
+            action = 'down'
+            commander.send_command('modifyqueue', data={'index': index, 'action': action, 'serial': serial}, callback=cb)
+
+        def task_rm(*args, **kwargs):
+            index = kwargs.get('index', None)
+            cb = kwargs.get('callback', None)
+            serial = kwargs.get('serial', None)
+            action = 'remove'
+            commander.send_command('modifyqueue', data={'index': index, 'action': action, 'serial': serial}, callback=cb)
+
+        taskqueues = TaskQueueWidget(hdd.serial, hdd.TaskQueue, task_up_cb=task_up, task_dn_cb=task_dn, task_del_cb=task_rm)
+        taskqueues = ui.BoxAdapter(taskqueues, 6)
+        taskqueues = ui.Columns([('weight', labelColWidth, ui.Text("Queued tasks:", align='left')), ('weight', valueColWidth, ui.Padding(taskqueues, min_width=15, width=('relative', 30)))])
+
+        ex = ui.Button("Exit", on_press=self.resetLayout)
+        ex = ui.Padding(ex, width=('relative', labelColWidth))
+
+        pile = ui.Pile([serial,model,size,medium,testsNumber,testsList,currentStatus,taskqueues,ex])
         line = ui.LineBox(ui.Filler(pile))
 
         title = ui.Text((hdd.status, str(hdd.serial) + " info: "))
         title = ui.Padding(title, left=3)
-        foot = ui.Button("Exit", on_press=self.resetLayout)
-        foot = ui.Padding(foot, left=3, width=10)
 
-        frame = ui.Frame(body=line, header=title, footer=foot, focus_part='footer')
+        frame = ui.Frame(body=line, header=title, focus_part='body')
         self.loop.widget = frame
 
     def ShowImagePickDialog(self, button=None, args = []):
@@ -795,27 +859,22 @@ class Application(object):
             align = 'center',
             width = 75,
             valign = 'middle',
-            height = 20
+            height = 30
         )
         self.MainFrame = ui.Pile([w, self.Htop])
         self.loop.widget = self.MainFrame
 
     def start(self):
-        self.daemonCommThread.start()
         self.loop.run()
 
     def stop(self):
-        self.daemonCommGo = False
-        self.daemonCommThread.join()
         os.system('clear')
+        commander.stop()
         print("Exited")
         raise ui.ExitMainLoop()
         exit(0)
 
-
-
-
-
 if __name__ == '__main__':
+    #commander = Commander(('localhost', 63962), b'H4789HJF394615R3DFESZFEZCDLPOQ')
     app = Application()
     app.start()

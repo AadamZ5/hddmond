@@ -4,9 +4,10 @@ import time
 import subprocess
 import datetime
 import enum
+from multiprocessing.managers import BaseManager
 from .pciaddress import PciAddress
 from .test import Test, TestResult
-from .task import EraseTask, ImageTask
+from .task import EraseTask, ImageTask, TaskQueue
 import proc.core
 
 debug = False
@@ -38,6 +39,10 @@ class TaskStatus(enum.Enum):
 
     def __str__(self):
         return self.name
+
+class HddManager(BaseManager):
+    def __init__(self, *args, **kwargs):
+        super(HddManager, self).__init__(*args, **kwargs)
 
 class Hdd:
     """
@@ -89,6 +94,7 @@ class Hdd:
         self.testCallbacks = []
         self._smart = pySMART.Device(self.node)
         self.Port = None
+        self.TaskQueue = TaskQueue(continue_on_error=False)
         self.CurrentTask = None
         self.CurrentTaskStatus = TaskStatus.Idle
         self.CurrentTaskReturnCode = None
@@ -192,21 +198,27 @@ class Hdd:
         else:
             self.CurrentTaskStatus = TaskStatus.Idle
 
+    def _erasing(self):
+        self.CurrentTaskStatus = TaskStatus.Erasing
+
     def Erase(self, callback=None):
-        if(self.CurrentTaskStatus == TaskStatus.Idle or self.CurrentTaskStatus == TaskStatus.Error):
-            self.CurrentTask = EraseTask(self.node, self.Size.replace('GB', '').strip(), callback=self._taskCompletedCallback)
-            self.CurrentTaskStatus = TaskStatus.Erasing
-            return True #We started the task sucessfully
+        if not self.TaskQueue.Full:
+            t = EraseTask(self.node, self.Size.replace('GB', '').strip(), callback=self._taskCompletedCallback)
+            r = self.TaskQueue.AddTask(t, preexec_cb=self._erasing)
+            return r #We probably queued the task sucessfully
         else:
-            return False #There is a task running on this hdd. cancel it first
+            return False #Queue is full
+
+    def _imaging(self):
+        self.CurrentTaskStatus = TaskStatus.Imaging
 
     def Image(self, image, callback=None):
-        if(self.CurrentTaskStatus == TaskStatus.Idle or self.CurrentTaskStatus == TaskStatus.Error):
-            self.CurrentTask = ImageTask(image, self.name, self._taskCompletedCallback)
-            self.CurrentTaskStatus = TaskStatus.Imaging
-            return True #We started the task sucessfully
+        if not self.TaskQueue.Full:
+            t = ImageTask(image, self.name, self._taskCompletedCallback)
+            self.TaskQueue.AddTask(t, preexec_cb=self._imaging)
+            return True #We queued the task sucessfully
         else:
-            return False #There is a task running on this hdd. cancel it first
+            return False #Queue is full, wait.
 
     def GetTestProgressString(self):
         if(self.testProgress == None):
@@ -217,15 +229,13 @@ class Hdd:
         return p + "%"
     
     def GetTaskProgressString(self):
-        if(self.CurrentTask != None) and (self.CurrentTaskStatus != TaskStatus.Idle):
+        if(self.TaskQueue.CurrentTask != None) and (self.CurrentTaskStatus != TaskStatus.Idle):
             if(self.CurrentTaskStatus == TaskStatus.Error):
-                return "Err: " + str(self.CurrentTask._returncode)
-            elif(self.CurrentTask.Finished):
+                return "Err: " + str(self.TaskQueue.CurrentTask._returncode)
+            elif(self.TaskQueue.CurrentTask.Finished):
                 return "Done"
-            elif(self.CurrentTaskStatus == TaskStatus.Erasing):
-                return str(self.CurrentTask.Progress) + "%"
-            elif(self.CurrentTaskStatus == TaskStatus.External):
-                return "PID: " + str(self.CurrentTask.PID)
+            elif(self.TaskQueue.CurrentTask != None):
+                return self.TaskQueue.CurrentTask.ProgressString
             else:
                 return "Busy"
                 
@@ -253,8 +263,10 @@ class Hdd:
         s = t + " " + str(self.serial) + " at " + str(self.node)
         return "<" + s + ">"
 
+HddManager.register('Hdd', Hdd)
+
 class HddViewModel:
-    def __init__(self, serial=None, node=None, pciAddress=None, status=None, taskStatus=None, taskString=None, testProgress=None, port=None, size=None, isSsd=None, smartResult=None):
+    def __init__(self, serial=None, node=None, taskQueueSize=0, pciAddress=None, status=None, taskStatus=None, taskString=None, testProgress=None, port=None, size=None, isSsd=None, smartResult=None):
         self.serial=serial
         self.node=node
         self.pciAddress=pciAddress
@@ -266,11 +278,12 @@ class HddViewModel:
         self.size=size
         self.isSsd=isSsd
         self.smartResult=smartResult
+        self.taskQueueSize = taskQueueSize
 
     @staticmethod
     def FromHdd(h: Hdd):
         logwrite(str(h))
-        hvm = HddViewModel(serial=h.serial, node=h.node, pciAddress=h.OnPciAddress, status=h.status, testProgress=h.GetTestProgressString(), taskStatus=h.CurrentTaskStatus, taskString=h.GetTaskProgressString(), port=h.Port, size=h.Size, isSsd=h._smart.is_ssd)
+        hvm = HddViewModel(serial=h.serial, node=h.node, pciAddress=h.OnPciAddress, status=h.status, testProgress=h.GetTestProgressString(), taskStatus=h.CurrentTaskStatus, taskString=h.GetTaskProgressString(), port=h.Port, size=h.Size, isSsd=h._smart.is_ssd, taskQueueSize=len(h.TaskQueue.Queue))
         hvm.smartResult = h._smart.__dict__.get('assessment', h._smart.__dict__.get('smart_status', None)) #Pickling mixup https://github.com/freenas/py-SMART/issues/23
         logwrite("\t" + str(hvm.status))
         return hvm

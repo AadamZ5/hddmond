@@ -8,7 +8,7 @@ import proc.core
 import pyudev
 from pySMART import Device
 import re
-from hddmontools.hdd import Hdd, HealthStatus, TaskStatus
+from hddmontools.hdd import Hdd, HealthStatus, TaskStatus, HddManager
 from hddmontools.task import ExternalTask
 from hddmontools.image import DiskImage, Partition
 import pySMART
@@ -46,7 +46,6 @@ def logwrite(s:str, endl='\n'):
         fd.close()
 
 class WebsocketServer:
-
     def __init__(self):
         pass
 
@@ -73,30 +72,40 @@ class ListModel:
         self.updateThread = threading.Thread(target=self.updateLoop, name="HddUpdateThread")
         self.gclient = graphqlclient.GraphQLClient('http://172.23.2.202:4000')
         
-        self.serverAddress = ('localhost', 63963) #63962 for stable, 63963 for testing
 
-        self.clientlist = [] #list of (client, addr)
+        self.serverAddress = ('localhost', 63963)
+        self.managerAddress = ('localhost', 63962)
+
+        self.clientlist = [] #list of (client, addr, thread)
         
 
-    def eraseBySerial(self, serials = []): #Starts an erase operation on the drives matching the input serials
+    def eraseBySerial(self, *args, **kw): #Starts an erase operation on the drives matching the input serials
         r = False
         l = threading.Lock()
         l.acquire()
+        serials = []
+        if('serials' in kw):
+            serials = kw['serials']
+
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
                     r = h.Erase()
                     if r == True:
-                        print("Started erase on " + str(h.serial) + " with PID " + str(h.CurrentTask.PID))
+                        print("Started erase on " + str(h.serial))
                     else:
                         print("Couldn't start erase on " + str(h.serial))
                     break;
         l.release()
         return r
 
-    def shortTestBySerial(self, serials = []): #Starts a short test on the drives matching the input serials
+    def shortTestBySerial(self, *args, **kw): #Starts a short test on the drives matching the input serials
         l = threading.Lock()
         l.acquire()
+        serials = []
+        if('serials' in kw):
+            serials = kw['serials']
+            
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
@@ -105,9 +114,13 @@ class ListModel:
         l.release()
         return True
 
-    def longTestBySerial(self, serials = []): #Starts a long test on the drives matching the input serials
+    def longTestBySerial(self, *args, **kw): #Starts a long test on the drives matching the input serials
         l = threading.Lock()
         l.acquire()
+        serials = []
+        if('serials' in kw):
+            serials = kw['serials']
+            
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
@@ -116,9 +129,13 @@ class ListModel:
         l.release()
         return True
 
-    def abortTestBySerial(self, serials = []): #Stops a test on the drives matching the input serials
+    def abortTestBySerial(self, *args, **kw): #Stops a test on the drives matching the input serials
         l = threading.Lock()
         l.acquire()
+        serials = []
+        if('serials' in kw):
+            serials = kw['serials']
+            
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
@@ -127,10 +144,17 @@ class ListModel:
         l.release()
         return True
 
-    def imageBySerial(self, serials = [], image=None): #applies an image on the drives matching the input serials
+    def imageBySerial(self, *args, **kw): #applies an image on the drives matching the input serials
         l = threading.Lock()
         l.acquire()
         im = None
+        image = None
+        serials = []
+        if('serials' in kw):
+            serials = kw['serials']
+        if('image' in kw):
+            image = kw['image']
+            
         for i in self.images:
             if str(image) == i.name:
                 im = i
@@ -146,6 +170,53 @@ class ListModel:
                     print("Starting image on " + h.serial + " with image " + im.name)
                     h.Image(im)
                     break
+        l.release()
+        return True
+
+    def abortTaskBySerial(self, *args, **kw):
+        l = threading.Lock()
+        l.acquire()
+        serials = []
+        if('serials' in kw):
+            serials = kw['serials']
+            
+        for s in serials:
+            for h in self.hdds:
+                if h.serial == s:
+                    h.TaskQueue.AbortCurrentTask()
+                    break;
+        l.release()
+        return True
+
+    def modifyTaskQueue(self, *args, **kw):
+        l = threading.Lock()
+        l.acquire()
+
+        serial = kw.get('serial', None)
+        action = kw.get('action', None)
+        index = kw.get('index', None)
+
+        if(serial == None):
+            return (False, 'No serial supplied')
+
+        if(index == None):
+            return (False, 'No index supplied')
+
+        try:
+            index = int(index)
+        except TypeError:
+            return (False, 'Index needs to be an integer')
+
+        for h in self.hdds:
+            if h.serial == serial:
+                if(action == 'up'):
+                    h.TaskQueue.PushUp(index)
+                elif(action == 'down'):
+                    h.TaskQueue.PushDown(index)
+                elif(action == 'remove'):
+                    h.TaskQueue.RemoveTask(index)
+                break;
+
         l.release()
         return True
 
@@ -194,6 +265,8 @@ class ListModel:
                     del client
                     break
                 
+            #The message type is a tuple of (command, data)
+
             #print("Got message: " + str(msg))
             if(type(msg) == tuple):
                 command = ''
@@ -212,25 +285,25 @@ class ListModel:
                         client.send('error')
 
                     elif command == 'erase':
-                        if(self.eraseBySerial(data)):
+                        if(self.eraseBySerial(**data)):
                             client.send(('success', command))
                         else:
                             client.send('error')
 
                     elif command == 'shorttest':
-                        if(self.shortTestBySerial(data)):
+                        if(self.shortTestBySerial(**data)):
                             client.send(('success', command))
                         else:
                             client.send('error')
 
                     elif command == 'longtest':
-                        if(self.longTestBySerial(data)):
+                        if(self.longTestBySerial(**data)):
                             client.send(('success', command))
                         else:
                             client.send('error')
 
                     elif command == 'aborttest':
-                        if(self.abortTestBySerial(data)):
+                        if(self.abortTestBySerial(**data)):
                             client.send(('success', command))
                         else:
                             client.send('error')
@@ -238,18 +311,27 @@ class ListModel:
                     elif command == 'getimages':
                         client.send(('images', self.images))
 
-                    elif 'image' in command and not command == 'getimages':
-                        image = command.split()[1]
-                        if(self.imageBySerial(data, image)):
+                    elif command == 'image':
+                        if(self.imageBySerial(**data)):
                             client.send(('success', command))
                         else:
                             client.send('error')
-                    elif command == 'listen':
+
+                    elif command == 'aborttask':
+                        if(self.abortTaskBySerial(**data)):
+                            client.send(('success', command))
+                        else:
+                            client.send('error')
+
+                    elif command == 'hdds':
                         #print("Sent: " + str(self.hdds))
                         if(len(self.hdds) == 0):
                             client.send(None)
                         else:
-                            client.send(('hdds', self.hdds))
+                            client.send((command, self.hdds))
+
+                    elif command == 'modifyqueue':
+                        self.modifyTaskQueue(**data)
 
                     else:
                         client.send('error')
@@ -281,7 +363,7 @@ class ListModel:
                 else:
                     task = self.findProcAssociated(hdd.name)
                     if(task != None):
-                        hdd.CurrentTask = ExternalTask(task.pid, processExitCallback=hdd._taskCompletedCallback)
+                        hdd.TaskQueue.AddTask(ExternalTask(task.pid, processExitCallback=hdd._taskCompletedCallback))
                         hdd.CurrentTaskStatus = TaskStatus.External
                 hdd.refresh()
             self.stuffRunning = busy
@@ -317,7 +399,7 @@ class ListModel:
     def addHdd(self, hdd: Hdd):
         t = self.findProcAssociated(hdd.name)
         if(t != None):
-            hdd.CurrentTask = ExternalTask(t.pid, processExitCallback=hdd._taskCompletedCallback)
+            hdd.TaskQueue.AddTask(ExternalTask(t.pid, processExitCallback=hdd._taskCompletedCallback))
             hdd.CurrentTaskStatus = TaskStatus.External
         hdd.refresh()
         self.hdds.append(hdd)
@@ -375,6 +457,8 @@ class ListModel:
         self._loopgo = True
         self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
         self.observer.start()
+        self.manager = HddManager(address=self.managerAddress, authkey=b'H4789HJF394615R3DFESZFEZCDLPOQ')
+        self.manager.get_server()
         self.server = ipc.Listener(address=self.serverAddress, authkey=b'H4789HJF394615R3DFESZFEZCDLPOQ')
         self.server._listener._socket.settimeout(3.0)
         self.updateThread = threading.Thread(target=self.updateLoop)
@@ -386,16 +470,23 @@ class ListModel:
         self.server.close()
         self.observer.stop()
         self.updateThread.join()
+        for c in self.clientlist:
+            client = c[0]
+            addr = c[1]
+            thread = c[2]
+            thread.join()
+
         for h in self.hdds:
+            h.TaskQueue.Pause = True
             if(h.CurrentTaskStatus != TaskStatus.External) and (h.CurrentTaskStatus != TaskStatus.Idle):
                 if(h.CurrentTaskStatus == TaskStatus.External):
-                    print("Detaching external process " + str(h.CurrentTask.PID) + " on " + h.serial)
-                    h.CurrentTask.detach()
+                    print("Detaching monitor of external process " + str(h.TaskQueue.CurrentTask.PID) + " on " + h.serial)
+                    h.TaskQueue.CurrentTask.detach()
                 else:
-                    print("Aborting task " + str(h.CurrentTask.name) + " (PID: " + str(h.CurrentTask.PID) + ") on " + h.serial)
-                    h.CurrentTask.abort()
+                    print("Aborting task " + str(h.TaskQueue.CurrentTask.name) + " (PID: " + str(h.TaskQueue.CurrentTask.PID) + ") on " + h.serial)
+                    h.TaskQueue.CurrentTask.abort()
             if(h.status == HealthStatus.LongTesting or h.status == HealthStatus.ShortTesting):
-                print("Detaching test on " + h.serial)
+                print("Detaching from SMART test on " + h.serial)
                 h.test.detach()
 
     def signal_close(self, signalNumber, frame):

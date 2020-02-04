@@ -20,6 +20,7 @@ class DiskImage:
         self._diskName = None
         self._sectorSizeLogical = None
         self._sectorSizePhysical = None
+        self.parttable = None
         self.partitions = []
         self._searchForPartitions()
 
@@ -50,6 +51,10 @@ class DiskImage:
                 s = lines[i].split(':')[1].strip().split('/')
                 self._sectorSizeLogical = int(s[0].lower().replace('b', ''))
                 self._sectorSizePhysical = int(s[1].lower().replace('b', ''))
+
+            if 'Partition Table' in lines[i]:
+                s = lines[i].split(':')[1].strip()
+                self.parttable = s
 
             if 'Number' in lines[i]: #Find where the partition definitions start
                 pStartIndex = i + 1
