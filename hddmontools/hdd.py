@@ -36,6 +36,8 @@ class TaskStatus(enum.Enum):
     External = 2,
     Error = 3,
     Imaging = 4,
+    ShortTesting = 4,
+    LongTesting = 5,
 
     def __str__(self):
         return self.name
@@ -115,7 +117,8 @@ class Hdd:
                 #self.testProgress = self._smart._test_progress
                 if not (self.status == HealthStatus.ShortTesting) or (self.status == HealthStatus.LongTesting):
                     self.status = HealthStatus.LongTesting #We won't know if this is a short or long test, so assume it can be long for sake of not pissing off the user.
-                    self.test = Test(self._smart, Test.Existing, callback=self._testCompletedCallback)
+                    t = Test(self._smart, Test.Existing, callback=self._testCompletedCallback)
+                    self.TaskQueue.AddTask(t, self._longtest)
                 else:
                     pass
             
@@ -175,18 +178,30 @@ class Hdd:
         for i in range(len(self.testCallbacks)):
             c = self.testCallbacks.pop(i)
             c(result)
-        
-    def ShortTest(self, callback=None):
+
+        self._taskCompletedCallback(0)
+    
+    def _shorttest(self):
         self.status = HealthStatus.ShortTesting
+        self.CurrentTaskStatus = TaskStatus.ShortTesting
+
+    def _longtest(self):
+        self.status = HealthStatus.LongTesting
+        self.CurrentTaskStatus = TaskStatus.LongTesting
+
+    def ShortTest(self, callback=None):
+        #self.status = HealthStatus.ShortTesting
         if(callback != None):
             self.testCallbacks.append(callback)
-        self.test = Test(self._smart, 'short', pollingInterval=5, callback=self._testCompletedCallback)
+        t = Test(self._smart, 'short', pollingInterval=5, callback=self._testCompletedCallback)
+        self.TaskQueue.AddTask(t, preexec_cb=self._shorttest)
 
     def LongTest(self, callback=None):
-        self.status = HealthStatus.LongTesting
+        #self.status = HealthStatus.ShortTesting
         if(callback != None):
             self.testCallbacks.append(callback)
-        self.test = Test(self._smart, 'long', pollingInterval=5, callback=self._testCompletedCallback)
+        t = Test(self._smart, 'long', pollingInterval=5, callback=self._testCompletedCallback)
+        self.TaskQueue.AddTask(t, preexec_cb=self._longtest)
 
     def AbortTest(self):
         if(self.test != None):

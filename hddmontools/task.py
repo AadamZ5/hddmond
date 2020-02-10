@@ -1,10 +1,12 @@
 import os
 import enum
 import subprocess
+from subprocess import TimeoutExpired
 import proc
 from proc.tree import get_process_tree
 import threading
 import time
+from pySMART import Device
 from .image import DiskImage, Partition
 
 
@@ -28,6 +30,9 @@ class Task:
 
     @property
     def ProgressString(self):
+        '''
+        Returns the _progressString of a task
+        '''
         return self._progressString
 
     @property
@@ -42,12 +47,22 @@ class Task:
         return True
 
     def start(self):
+        '''
+        Should be overridden in sub-classes to define the starting point of the operation.
+        This is necessary for task-queues.
+        '''
         pass
 
     def abort(self):
+        '''
+        Should be overridden in a sub-class to provide the implimentation of aborting the task.
+        '''
         pass
 
 class TaskQueue:
+    '''
+    A container that manages and handles multiple tasks.
+    '''
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -62,7 +77,8 @@ class TaskQueue:
     def Pause(self, value: bool):
         if (self._pause == True and value == False):
             self._pause = value
-            self._create_queue_thread()
+            if(self.CurrentTask == None):
+                self._create_queue_thread()
         else:
             self._pause = value
 
@@ -79,11 +95,12 @@ class TaskQueue:
         self.continue_on_error = continue_on_error
         self._pause = False
         self._queue_thread = None
+        self._task_name_history = []
 
     def AddTask(self, task: Task, preexec_cb=None, index=None):
         if not (len(self.Queue) >= self.maxqueue):
-            cb = task._callback
-            task._callback = self._taskcb
+            cb = task._callback 
+            task._callback = self._taskcb #Hijack the callback so we can catch when the task is done.
             if(index != None):
                 if(index >= self.maxqueue):
                     raise IndexError("Index out of range 0-" + str(self.maxqueue-1))
@@ -98,12 +115,17 @@ class TaskQueue:
             return False
 
     def _taskcb(self, returncode, *args, **kwargs):
+
+        self._task_name_history.append(self.CurrentTask.name + ": " + str(returncode))
+
         if(self._currentcb != None and callable(self._currentcb)): #Call the original callback associated with the completed task
             self._currentcb(returncode)
 
-        if(returncode != 0 and self.continue_on_error == False):
+        if(int(returncode) != 0 and self.continue_on_error == False):
             self.Pause = True
 
+        self.CurrentTask = None
+        self._currentcb = None
         if(self.Pause == True):
             return
         else:
@@ -129,6 +151,7 @@ class TaskQueue:
             return
 
     def PushUp(self, index):
+        lastpause = self.Pause
         self.Pause = True
         last_index = self.maxqueue-1 #Don't shove above our max index
         if(index >= last_index):
@@ -136,29 +159,31 @@ class TaskQueue:
         t = self.Queue[index]
         del self.Queue[index]
         self.Queue.insert(index+1, t)
-        self.Pause = False
+        self.Pause = lastpause
 
     def PushDown(self, index):
+        lastpause = self.Pause
         self.Pause = True
         if(index <= 0): #Dont shove below 0 index
             return
         t = self.Queue[index]
         del self.Queue[index]
         self.Queue.insert(index-1, t)
-        self.Pause = False
+        self.Pause = lastpause
 
     def RemoveTask(self, index):
+        lastpause = self.Pause
         self.Pause = True
         if index < 0 or index > self.maxqueue-1:
             return
         del self.Queue[index]
-        self.Pause = False
-
+        self.Pause = lastpause
 
     def AbortCurrentTask(self, pause=True):
         if(self.CurrentTask != None):
-            self.CurrentTask.abort()
             self.Pause = pause
+            #self._task_name_history.append(self.CurrentTask.name)
+            self.CurrentTask.abort()
         
 
 class ExternalTask(Task):
@@ -231,7 +256,7 @@ class EraseTask(Task):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    def __init__(self, node, capacity, pollingInterval = 5, callback=None):
+    def __init__(self, node, capacity=0, pollingInterval = 5, callback=None):
         self._subproc = None
         self._procview = None
         self._PID = None
@@ -283,7 +308,7 @@ class EraseTask(Task):
         self._PID = self._subproc.pid
         self._procview = proc.core.Process.from_pid(self._PID)
         self._pollingThread.start()
-        self._progressString = "Erasing " + str(self.Progress) + "%" 
+        self._progressString = "Erasing" + (" " + str(self.Progress) + "%" if self.Capacity != 0 else '') 
 
 
     def abort(self):
@@ -348,21 +373,30 @@ class ImageTask(Task):
 
     def _monitor(self):
         for i in range(len(self._image.partitions)): #The partclone.ntfs process will spawn once for each partition. Watch for partclone.ntfs as many times as there are partitions to clone.
-            while self._poll == True and self._partclone_procview == None: #Watch for the creation of the partclone.ntfs process
+
+            while self._poll == True and self._partclone_procview == None and self._md5sum_procview == None: #Watch for the creation of the partclone.ntfs process
                 time.sleep(self._pollingInterval)
                 self._check_subproc()
+                
                 self._proctree.update_descendants()
                 p = self._proctree.find(exe_name='partclone.ntfs', recursive=True)
+                m = self._proctree.find(exe_name='md5sum', recursive=True)
                 if p != None:
                     self._partclone_procview = p
-                    self._progressString = "Cloning " + self._image.name + ":" + str(i) + "/" + str(len(self._image.partitions))
+                    self._progressString = "Cloning " + self._image.name + ":" + str(i+1) + "/" + str(len(self._image.partitions))
                     self._cloning = True
+                if m != None:
+                    self._md5sum_procview = p
+                    self._progressString = "Checking " + self._image.name
+                    self._checking = True
 
-            while self._cloning == True and self._poll == True: #Wait for the end of the partclone.ntfs process
-                time.sleep(self._pollingInterval)
+            while self._cloning == True and self._poll == True and self._md5sum_procview == None: #Wait for the end of the partclone.ntfs process, or skip these loops if we see the md5sum process. Possibility to incorrectly count partitions
+                time.sleep(self._pollingInterval/4) #Increased pollrate to catch the death of the process.
                 self._check_subproc()
                 if(self._partclone_procview.is_alive == False):
+                    self._partclone_procview = None
                     self._cloning = False
+                    
 
         while self._poll == True and self._md5sum_procview == None: #Watch for the creation of the md5sum process
             time.sleep(self._pollingInterval)
@@ -375,7 +409,7 @@ class ImageTask(Task):
                 self._checking = True
 
         while self._checking == True and self._poll == True: #Wait for the end of the md5sum process
-            time.sleep(self._pollingInterval)
+            time.sleep(self._pollingInterval/4)
             self._check_subproc()
             if(self._md5sum_procview.is_alive == False):
                 self._checking = False
@@ -388,16 +422,24 @@ class ImageTask(Task):
             self._callback(self._returncode)
 
     def _check_subproc(self):
+        try:
+            self._subproc.communicate(timeout=1)
+        except TimeoutExpired as e:
+            pass
         self._returncode = self._subproc.poll()
         if(self._returncode != None):
-            self.err = self._subproc.stderr.read()
-            self.out = self._subproc.stdout.read()
+            try:
+                self.err = self._subproc.stderr.read()
+                self.out = self._subproc.stdout.read()
+            except ValueError as e:
+                pass
             self._poll = False  
             
     def abort(self):
         self._poll = False
         if(self._subproc):
             self._subproc.terminate()
-            
-
-
+        else:
+            if(self._callback != None and callable(self._callback)):
+                self._callback(self._returncode)
+        

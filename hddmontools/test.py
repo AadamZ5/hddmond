@@ -3,15 +3,19 @@ import threading
 import time
 import enum
 import datetime
+from .task import Task
 
 class TestResult(enum.Enum):
-    FINISH_PASSED = 1,
-    FINISH_FAILED = 0,
-    CANT_START = 2,
-    ABORTED = 3,
-    UNKNOWN = 4,
+    FINISH_PASSED = 0
+    FINISH_FAILED = 1
+    CANT_START = 2
+    ABORTED = 3
+    UNKNOWN = 4
 
-class Test():
+    def __int__(self):
+        return self.value
+
+class Test(Task):
     Short = 'short'
     Long = 'long'
     Existing = 'existing'
@@ -21,16 +25,19 @@ class Test():
         return self.device._test_running
 
     @property
-    def progress(self):
+    def Progress(self):
         return self._progress
+
+    @property
+    def Finished(self):
+        return self._finished
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        del state['_testingThread']
+        state['_testingThread'] = None
         return state
 
     def __setstate__(self, state):
-        state['_testingThread'] = None
         self.__dict__.update(state)
 
     def __init__(self, smart_device: pySMART.Device, testType, pollingInterval=5, callback=None, progressCallback=None):
@@ -38,20 +45,28 @@ class Test():
         self.testType = testType
         self.result = None
         self._progress = 0
-        self._callbacks = []
         self._progressCallback = progressCallback
         self.date_completed = None
         self.date_started = None
         self.passed = False
-        if(callback):
-            self._callbacks.append(callback)
         self._pollingInterval = pollingInterval
         self._testing = True
+        self._finished = False
         if(self.testType == Test.Existing):
             self._testingThread = threading.Thread(target=self._loose_test, args=(pollingInterval,))
         else:
             self._testingThread = threading.Thread(target=self._captive_test, args=(self.testType, pollingInterval,))
-        self._testingThread.start()
+        self._started = False
+        super(Test, self).__init__("Long test" if self.testType == Test.Long else ("Short test" if self.testType == Test.Short else "Test"))
+        self._progressString = "Test"
+        self._callback = callback
+
+    def start(self):
+        if not self._started:
+            self._testingThread.start()
+            self._started = True
+        else:
+            return
 
     def _loose_test(self, *args):
         while self._testing:
@@ -73,6 +88,7 @@ class Test():
         #After we finish the test
         self._processReturnCode(r, t)
         self._testing = False
+        self._finished = True
         self._callCallbacks()
 
     def abort(self):
@@ -110,14 +126,15 @@ class Test():
         lock.release()
 
     def _callCallbacks(self):
-        for cb in self._callbacks:
-            cb(self.result)
+        if(self._callback != None and callable(self._callback)):
+            self._callback(self.result)
 
     def _progressHandler(self, progress):
         try:
             self._progress = int(progress)
         except Exception as e:
             pass
+        self._progressString = "Testing " + str(self._progress) + "%"
         if(self._progressCallback != None):
             self._progressCallback(progress)
 

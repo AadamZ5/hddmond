@@ -1,7 +1,4 @@
-#!/usr/bin/python3
 import os, sys
-os.chdir('/etc/hddmon')
-sys.path.append('/etc/hddmon')
 import subprocess
 import multiprocessing.connection as ipc
 import proc.core
@@ -21,30 +18,6 @@ from socket import timeout
 import graphqlclient
 import websockets
 
-bootPartNode = subprocess.Popen("df -h | grep '/$' | sed 's/\\(^\\/dev\\/\\w*\\).*/\\1/'", shell=True, stdout=subprocess.PIPE).stdout.read() #Thanks https://askubuntu.com/questions/542351/determine-boot-disk
-bootPartNode = bootPartNode.decode().rstrip()
-print("Boot partition is " + bootPartNode)
-bootDiskNode = re.sub(r'[0-9]+', '', bootPartNode)
-print("Boot disk is " + bootDiskNode)
-
-context = pyudev.Context()
-for device in context.list_devices(subsystem='block'):
-    print(device.device_node, end="")
-    if(device.device_node == bootDiskNode):
-        print("  BOOT DISK")
-    elif(device.device_node == bootPartNode):
-        print(" BOOT PART")
-    else:
-        print()
-
-debug = False
-def logwrite(s:str, endl='\n'):
-    if debug:
-        fd = open("./main.log", 'a')
-        fd.write(s)
-        fd.write(endl)
-        fd.close()
-
 class ListModel:
     """
     Data model that holds hdd list.
@@ -55,11 +28,12 @@ class ListModel:
         self.hdds = []
         self.blacklist_hdds = self.load_blacklist_file()
         self.images = []
-        self.monitor = pyudev.Monitor.from_netlink(context)
+        self._udev_context = pyudev.Context()
+        self.monitor = pyudev.Monitor.from_netlink(self._udev_context)
         self.monitor.filter_by(subsystem='block', device_type='disk')
         self.PortDetector = hddmontools.portdetection.PortDetection()
         self.AutoShortTest = False
-        self.updateDevices(bootDiskNode)
+        self.updateDevices()
         self.loadDiskImages()
         self._loopgo = True
         self.stuffRunning = False
@@ -129,8 +103,6 @@ class ListModel:
                 break
         return False
             
-            
-
     def eraseBySerial(self, *args, **kw): #Starts an erase operation on the drives matching the input serials
         r = False
         l = threading.Lock()
@@ -309,7 +281,6 @@ class ListModel:
         l.release()
         return True
 
-
     def serverLoop(self):
         print("Server running")
         while self._loopgo:
@@ -451,7 +422,6 @@ class ListModel:
                             hdd.UpdateSmart()
                             hdd._smart_last_call = time.time()
                         except Exception as e:
-                            logwrite("Exception raised!:" + str(e))
                             print("Exception raised!:" + str(e))
                 if(hdd.CurrentTaskStatus != TaskStatus.Idle): #If there is a task operating on the drive's data
                     busy = True
@@ -464,7 +434,7 @@ class ListModel:
             self.stuffRunning = busy
             time.sleep(1)
 
-    def updateDevices(self, bootNode: str):
+    def updateDevices(self, ignoreNodes = []):
         """
         Checks the system's existing device list and gatheres already connected hdds.
         Does not check for already existing devices. It's a good idea to clear the current
@@ -476,7 +446,7 @@ class ListModel:
         for d in pySMART.DeviceList().devices:
             
             notFound = True
-            if("/dev/" + d.name == bootNode): #Check if this is our boot drive.
+            if("/dev/" + d.name in ignoreNodes): #Check if this is our boot drive.
                 notFound = False
 
             for hdd in self.hdds:
@@ -602,21 +572,6 @@ class ListModel:
         self.stop()
         self.hdds.clear()
         self.images.clear()
-        self.updateDevices(bootDiskNode)
+        self.updateDevices()
         self.loadDiskImages()
         self.start()
-
-if __name__ == '__main__':
-    hd = ListModel()
-    signal.signal(signal.SIGINT, hd.signal_close)
-    signal.signal(signal.SIGQUIT, hd.signal_close)
-    signal.signal(signal.SIGTERM, hd.signal_close)
-    #signal.signal(signal.SIGKILL, hd.signal_close) #We should let this kill the program instead of trying to handle it
-    signal.signal(signal.SIGHUP, hd.signal_hangup)
-    signal.signal(signal.SIGUSR1, hd.signal_info)
-    hd.start()
-    exit(0)
-else:
-    print("This program is intended to be run from the cli")
-    logwrite("This program is intended to be run from the cli")
-    exit(55)

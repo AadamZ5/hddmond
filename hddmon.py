@@ -41,68 +41,102 @@ def logwrite(s:str, endl='\n'):
         fd.write(endl)
         fd.close()
 
-class HddTestEntryTreeWidget(ui.TreeWidget):
-    def __init__(self, node,):
-        super(HddTestEntryTreeWidget, self).__init__(node)
+class HddTestsWidget(ui.WidgetWrap):
+    def __init__(self, tests=None):
+        self._tests = (tests if tests != None else [])
+        self._rows_ = []
 
-    def get_display_text(self):
-        return self._node.get_key()
+        for t in self._tests:
+            label = ui.Text(str(t))
+            self._rows_.append(label)
 
-class TestEntryNode(ui.TreeNode):
-    def __init__(self, test: pySMART.Test_Entry):
-        self.test = test
-        super(TestEntryNode).__init__(self.test, key=self.test.hours)
-        
-    def load_widget(self):
-        return HddTestEntryTreeWidget(self)
+        self._listwalker = ui.SimpleListWalker()
+        self._list = ui_special.IndicativeListBox
 
 class TaskQueueWidget(ui.WidgetWrap):
-    def __init__(self, serial, TaskQueue: TaskQueue, task_up_cb=None, task_dn_cb=None, task_del_cb=None):
+
+    @property
+    def paused(self):
+        return self._tq.Pause
+
+    def __init__(self, serial, TaskQueue: TaskQueue, task_up_cb=None, task_dn_cb=None, task_del_cb=None, pause_cb=None):
         self._rows_ = []
         self._tq = TaskQueue
         self._t_u_cb = task_up_cb
         self._t_d_cb = task_dn_cb
         self._t_r_cb = task_del_cb
+        self._p_cb = pause_cb
         self._serial = serial
         self._gen_rows()
         self._listwalker = ui.SimpleFocusListWalker(self._rows_)
         self._list = ui_special.IndicativeListBox(self._listwalker)
-        self._box = ui.LineBox(self._list)
-        self._paused = not self._tq.Pause
-        self._frame = ui.Frame(self._box, header=ui.Button(('Pause' if not self._tq.Pause else 'Unpause'), on_press=self._pause, user_data=self._paused))
-        super(TaskQueueWidget, self).__init__(self._list)
+        self._pause_button = ui.Button(('Pause' if not self._tq.Pause else 'Unpause'), on_press=self._pause, user_data=self.paused)
+        self._pile = ui.Pile([('pack',self._pause_button), self._list])
+        #self._pile = ui.Divider()
+        self._box = ui.LineBox(self._pile)
+        super(TaskQueueWidget, self).__init__(self._box)
 
     def _gen_rows(self):
         self._rows_.clear()
         for i in range(len(self._tq.Queue)):
             task = self._tq.Queue[i][1]
-            bup = ui.Button('▲', on_press=self._taskup, user_data=i)
-            bdn = ui.Button('▼', on_press=self._taskdown, user_data= i)
+            n = ui.Text(str(i+1) + ": ")
+            bup = ui.Button('▲', on_press=self._taskdown, user_data=i)
+            bdn = ui.Button('▼', on_press=self._taskup, user_data= i)
             babrt = ui.Button('X', on_press=self._taskdel, user_data=i)
             name = ui.Text(task.name)
-            col = ui.Columns([name, (5,bup),(5,bdn),(5,babrt)])
+            col = ui.Columns([('pack',n), name, (5,bup),(5,bdn),(5,babrt)])
             self._rows_.append(col)
-        self._rows_.reverse()
+        _offset = len(self._rows_)
+        self._rows_.append(ui.Divider())
+        self._rows_.append(ui.Text(('options','▼ completed tasks ▼'), align='center'))
+        for i in range(len(self._tq._task_name_history)):
+            oldt = self._tq._task_name_history[i]
+            n = ui.Text(('options',str(i+1) + ": "))
+            name = ui.Text(('options',str(oldt)))
+            col = ui.Columns([('pack',n), name])
+            self._rows_.append(col)
+
         self._listwalker = ui.SimpleFocusListWalker(self._rows_)
 
 
     def _taskup(self, button, index=None, *args, **kwargs):
         if(self._t_u_cb != None and callable(self._t_u_cb)):
-            self._t_u_cb(index=index, callback=self._cb, serial=self._serial)
+            self._t_u_cb(index=index, callback=self._cb_u, serial=self._serial)
 
     def _taskdown(self, button, index=None, *args, **kwargs):
         if(self._t_d_cb != None and callable(self._t_d_cb)):
-            self._t_d_cb(index=index, callback=self._cb, serial=self._serial)
+            self._t_d_cb(index=index, callback=self._cb_d, serial=self._serial)
 
     def _taskdel(self, button, index=None, *args, **kwargs):
         if(self._t_r_cb != None and callable(self._t_r_cb)):
-            self._t_r_cb(index=index, callback=self._cb, serial=self._serial)
+            self._t_r_cb(index=index, callback=self._cb_r, serial=self._serial)
 
-    def _cb(self, *args, **kwargs):
+    def _cb_u(self, *args, **kwargs):
+        data = args[0]
         pass
+
+    def _cb_d(self, *args, **kwargs):
+        data = args[0]
+        pass
+
+    def _cb_r(self, *args, **kwargs):
+        data = args[0]
+        pass
+
+    def _cb_p(self, *args, **kwargs):
+        data = args[0]
+        pass        
 
     def _pause(self, button, pause):
-        pass
+        if(self._p_cb != None and callable(self._p_cb)):
+            self._p_cb(callback=self._cb_p, serial=self._serial, pause=(not self._tq.Pause))
+
+    def _update(self, taskQueue: TaskQueue):
+        self._tq = taskQueue
+        self._pause_button.set_label(('Pause' if not self._tq.Pause else 'Unpause'))
+        self._rows_.clear()
+        self._gen_rows()
 
 class HddWidget(ui.WidgetWrap):
     def __init__(self, hdd: HddViewModel, app):
@@ -124,7 +158,7 @@ class HddWidget(ui.WidgetWrap):
         self._morewidget = ui.AttrMap(self._more, 'line', focus_map=self.__app__.focus_map)
         self._morewidget = ui.Padding(self._morewidget, align='center')
 
-        self._col = ui.Columns([(4,self._check_wrap), ('weight', 35, self._id), ('weight', 20, self._port), ('weight', 20, self._cap), ('weight', 25, self._node), ('weight', 15, self._task), ('weight', 10, self._stat), (10, self._morewidget)])
+        self._col = ui.Columns([(4,self._check_wrap), ('weight', 35, self._id), ('weight', 20, self._port), ('weight', 20, self._cap), ('weight', 15, self._node), ('weight', 25, self._task), ('weight', 10, self._stat), (10, self._morewidget)])
         self._pad = ui.Padding(self._col, align='center', left=2, right=2)
         self._main = ui.AttrMap(self._pad, None, focus_map=self.__app__.focus_map)
         self.Update(self.hdd)
@@ -152,7 +186,7 @@ class HddWidget(ui.WidgetWrap):
             self._task.set_text((self.hdd.taskStatus, str(self.hdd.taskString) + (" (" + str(self.hdd.taskQueueSize) + ")" if self.hdd.taskQueueSize > 0 else "")))
             self._cap.set_text((self.hdd.taskStatus, self.hdd.size))
         else:
-            self._task.set_text((self.hdd.taskStatus, str(self.hdd.taskString)))
+            self._task.set_text((self.hdd.taskStatus, str(self.hdd.taskString) + (" (" + str(self.hdd.taskQueueSize) + ")" if self.hdd.taskQueueSize > 0 else "")))
             self._cap.set_text(('text',self.hdd.size))
 
     def get_attr_map(self):
@@ -175,16 +209,10 @@ class Commander:
         print("Connected!")
         self._curr_cmd = None
         self._queue_thread = None
-
-        try:
-            self.client = ipc.Client(self.daemonAddress, authkey=self.daemonKey)
-        except Exception as e:
-            print("A connection could not be established to the testing server: \n" + str(e))
-            exit(1)
-        self._daemon_thread = threading.Thread(target=self.daemonComm, args=(self.client), name='commanding_thread')
+        self._daemon_thread = threading.Thread(target=self.daemonComm, name='commanding_thread')
 
     def send_command(self, command, data={}, callback=None, *args, **kwargs):
-        if(self.connection.closed != True):
+        if('connection' in self.__dict__) and (self.connection.closed != True):
             cb = callback
             self.commandQueue.append((str(command), data, cb))
             if(len(self.commandQueue) == 1 and self._curr_cmd == None): #We added the first task of this chain-reaction. Kick off the queue.
@@ -215,10 +243,10 @@ class Commander:
             else:
                 if not len(self.commandQueue) > 0:
                     continue
-                t = self.commandQueue.pop()
-                cmd = (t[0],t[1]) #(command, data, callback)
-                if(len(t) >2):
-                    callback = t[2]
+                self._curr_cmd = self.commandQueue.pop()
+                cmd = (self._curr_cmd[0],self._curr_cmd[1]) #(command, data, callback)
+                if(len(self._curr_cmd) >2):
+                    callback = self._curr_cmd[2]
                 else:
                     callback = None
                 self.connection.send(cmd)
@@ -266,7 +294,9 @@ class Application(object):
         (TaskStatus.Idle, 'dark gray', 'black'),
         (TaskStatus.External, 'dark blue', 'black'),
         (TaskStatus.Error, 'dark red', 'black'),
-        (TaskStatus.Imaging, 'black', 'dark blue'),]
+        (TaskStatus.Imaging, 'black', 'dark blue'),
+        (TaskStatus.ShortTesting, 'yellow', 'black'),
+        (TaskStatus.LongTesting, 'light magenta', 'black'),]
         
         self.focus_map = {
         'heading': 'focus heading',
@@ -395,6 +425,8 @@ class Application(object):
         loadingmsg = userargs.get('loading_message', None)
         commander.send_command(command, data=data, callback=callback)
         self.ShowLoadingDialog(text=[loadingmsg if loadingmsg != None else 'Loading...'])
+        for hw in self._getSelected():
+            hw.setChecked(False)
 
     def _erase(self, button=None, *args, **kwargs):
         self._send_command(userargs={'command': 'erase', 'data': self._getSelectedSerials, 'callback': self.resetLayout, 'loading_message': 'Starting erase task(s)...'})
@@ -422,7 +454,7 @@ class Application(object):
             return
         if(image == None):
             return
-        commander.send_command('image', data={'image': image, 'serials': serialList}, callback=self.resetLayout)
+        commander.send_command('image', data={'image': image.name, 'serials': serialList['serials']}, callback=self.resetLayout)
         self.ShowLoadingDialog(text=['Starting image(s)...'])
 
     def processHddData(self, data):
@@ -785,14 +817,23 @@ class Application(object):
             action = 'remove'
             commander.send_command('modifyqueue', data={'index': index, 'action': action, 'serial': serial}, callback=cb)
 
-        taskqueues = TaskQueueWidget(hdd.serial, hdd.TaskQueue, task_up_cb=task_up, task_dn_cb=task_dn, task_del_cb=task_rm)
-        taskqueues = ui.BoxAdapter(taskqueues, 6)
+        def pause(*args, **kwargs):
+            cb = kwargs.get('callback', None)
+            serial = kwargs.get('serial', None)
+            pause = kwargs.get('pause', None)
+            commander.send_command('pausequeue', data={'serials': [serial,], 'pause': pause}, callback=cb)
+
+        taskqueues = TaskQueueWidget(hdd.serial, hdd.TaskQueue, task_up_cb=task_up, task_dn_cb=task_dn, task_del_cb=task_rm, pause_cb=pause)
+        taskqueues = ui.BoxAdapter(taskqueues, 12)
         taskqueues = ui.Columns([('weight', labelColWidth, ui.Text("Queued tasks:", align='left')), ('weight', valueColWidth, ui.Padding(taskqueues, min_width=15, width=('relative', 30)))])
+
+        blacklist = ui.Button("Blacklist drive", on_press=self._send_command, user_data={'command': 'blacklist', 'data': {'serials': [hdd.serial,]}, 'callback': self.resetLayout})
+        blacklist = ui.Padding(blacklist, width=('relative', labelColWidth))
 
         ex = ui.Button("Exit", on_press=self.resetLayout)
         ex = ui.Padding(ex, width=('relative', labelColWidth))
 
-        pile = ui.Pile([serial,model,size,medium,testsNumber,testsList,currentStatus,taskqueues,ex])
+        pile = ui.Pile([serial,model,size,medium,testsNumber,testsList,currentStatus,taskqueues,blacklist,ui.Divider(),ex])
         line = ui.LineBox(ui.Filler(pile))
 
         title = ui.Text((hdd.status, str(hdd.serial) + " info: "))
