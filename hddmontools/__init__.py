@@ -1,1 +1,1 @@
-__all__ = ['pciaddress','sasdetection','ahcidetection','portdetection','hdd',]
+__all__ = ['pciaddress','sasdetection','ahcidetection','portdetection','hdd','task','test','image',]

@@ -3,7 +3,11 @@ import pySMART
 import time
 import subprocess
 import datetime
+import enum
+from multiprocessing.managers import BaseManager
 from .pciaddress import PciAddress
+from .test import Test, TestResult
+from .task import EraseTask, ImageTask, TaskQueue
 import proc.core
 
 debug = False
@@ -14,21 +18,38 @@ def logwrite(s:str, endl='\n'):
         fd.write(endl)
         fd.close()
 
+class HealthStatus(enum.Enum):
+    Failing = 0,
+    ShortTesting = 1,
+    LongTesting = 2,
+    Default = 3,
+    Passing = 4,
+    Warn = 5,
+    Unknown = 6,
+
+    def __str__(self):
+        return self.name
+
+class TaskStatus(enum.Enum):
+    Idle = 0,
+    Erasing = 1,
+    External = 2,
+    Error = 3,
+    Imaging = 4,
+    ShortTesting = 4,
+    LongTesting = 5,
+
+    def __str__(self):
+        return self.name
+
+class HddManager(BaseManager):
+    def __init__(self, *args, **kwargs):
+        super(HddManager, self).__init__(*args, **kwargs)
+
 class Hdd:
     """
     Class for storing data about HDDs
     """
-
-    STATUS_FAILING = 'failinghdd'
-    STATUS_TESTING = 'testinghdd'
-    STATUS_LONGTST = 'longtsthdd'
-    STATUS_DEFAULT = 'defaulthdd'
-    STATUS_PASSING = 'passinghdd'
-    STATUS_UNKNOWN = 'unknownhdd'
-    TASK_ERASING = 'taskerase'
-    TASK_NONE = 'tasknone'
-    TASK_EXTERNAL = 'taskextern'
-    TASK_ERROR = 'taskerror'
 
     def __getstate__(self):
         # Copy the object's state from self.__dict__ which contains
@@ -44,52 +65,60 @@ class Hdd:
         return state
 
     def __setstate__(self, state):
-        # Restore instance attributes (i.e., filename and lineno).
+        # Restore instance attributes (i.e., serial and model).
         self.__dict__.update(state)
         # Restore the udev link
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), self.node)
         if not ('CurrentTask' in vars(self)):
             self.CurrentTask = None
         
+    @property
+    def testProgress(self):
+        if(self.test != None):
+            return self.test.progress
+        else:
+            if ('_test_progress' in self._smart.__dict__):
+                return self._smart._test_progress
+            else:
+                return 0
 
     def __init__(self, node: str):
         '''
-        Create a hdd object from its symlink node
+        Create a hdd object from its symlink node '/dev/sd?'
         '''
         self.serial = '"HDD"'
         self.model = str()
-        self.testProgress = int()
         self.node = node
         self.name = str(node).replace('/dev/', '')
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), node)
         self.OnPciAddress = None
-        self.estimatedCompletionTime = datetime.datetime.now()
+        self.test = None
+        self.testCallbacks = []
         self._smart = pySMART.Device(self.node)
         self.Port = None
+        self.TaskQueue = TaskQueue(continue_on_error=False)
         self.CurrentTask = None
-        self.CurrentTaskStatus = Hdd.TASK_NONE
+        self.CurrentTaskStatus = TaskStatus.Idle
         self.CurrentTaskReturnCode = None
         self.Size = self._smart.capacity
         self._smart_last_call = time.time()
-        self.medium = None
-        self._smart.tests
+        self.medium = None #SSD or HDD
+        self.status = HealthStatus.Default
+
         #Check interface
         if(self._smart.interface != None):
 
             #Set our status according to initial health assesment
-            if(self._smart.assessment == "PASS"):
-                self.status = Hdd.STATUS_DEFAULT
-            elif(self._smart.assessment == "FAIL"):
-                self.status = Hdd.STATUS_FAILING
-            else:
-                self.status = Hdd.STATUS_UNKNOWN
+            #self._map_smart_assesment()
 
             #See if we're currently running a test
             status, testObj, remain = self._smart.get_selftest_result()
             if status == 1:
-                self.testProgress = self._smart._test_progress
-                if not (self.status == Hdd.STATUS_TESTING) or (self.status == Hdd.STATUS_LONGTST):
-                    self.status = Hdd.STATUS_LONGTST #We won't know if this is a short or long test, so assume it can be long for sake of not pissing off the user.
+                #self.testProgress = self._smart._test_progress
+                if not (self.status == HealthStatus.ShortTesting) or (self.status == HealthStatus.LongTesting):
+                    self.status = HealthStatus.LongTesting #We won't know if this is a short or long test, so assume it can be long for sake of not pissing off the user.
+                    t = Test(self._smart, Test.Existing, callback=self._testCompletedCallback)
+                    self.TaskQueue.AddTask(t, self._longtest)
                 else:
                     pass
             
@@ -100,23 +129,10 @@ class Hdd:
             else:
                 self.medium = "HDD"
         else:
-            self.status = Hdd.STATUS_UNKNOWN
+            self.status = HealthStatus.Unknown
             self.serial = "Unknown HDD"
             self.model = ""
             #Idk where we go from here
-        
-        sysp = self._udev.sys_path
-
-#     0    1     2        3           4        5     6        7          8      9   10
-#EX1:   '/sys/devices/pci0000:00/0000:00:1f.2/ata2/host2/target2:0:0/2:0:0:0/block/sdb        <== For a drive on the internal SATA controller!
-
-#     0    1     2        3           4             5        6       7          8             9         10      11   12
-#EX2:   '/sys/devices/pci0000:00/0000:00:01.0/0000:01:00.0/host0/port-0:3/end_device-0:3/target0:0:3/0:0:3:0/block/sdc'   <== For a drive on the LSI SAS controller!
-
-        driveinfo = sysp.split('/')
-        pci = str(driveinfo[4])
-
-        #self.OnPciAddress = 
         
         
     @staticmethod
@@ -145,34 +161,79 @@ class Hdd:
         else:
             return False
 
-    def ShortTest(self):
-        self.status = Hdd.STATUS_TESTING
-        status, message, time = self._smart.run_selftest('short')
-        if(status == 0):
-            self.estimatedCompletionTime = datetime.datetime.strptime(str(time), r'%a %b %d %H:%M:%S %Y')
-        self._smart.update()
+    def _testCompletedCallback(self, result: TestResult):
+        if(result == TestResult.FINISH_PASSED):
+            self.status = HealthStatus.Passing
 
-    def LongTest(self):
-        self.status = Hdd.STATUS_LONGTST
-        status, message, time = self._smart.run_selftest('long')
-        if(status == 0):
-            self.estimatedCompletionTime = datetime.datetime.strptime(str(time), r'%a %b %d %H:%M:%S %Y')
-        self._smart.update()
+        elif(result == TestResult.FINISH_FAILED): 
+            self.status = HealthStatus.Failing
+
+        elif(result == TestResult.ABORTED):
+            self.status = HealthStatus.Default
+        elif(result == TestResult.CANT_START):
+            self.status = self.status
+        else:
+            self.status = HealthStatus.Warn
+        
+        for i in range(len(self.testCallbacks)):
+            c = self.testCallbacks.pop(i)
+            c(result)
+
+        self._taskCompletedCallback(0)
+    
+    def _shorttest(self):
+        self.status = HealthStatus.ShortTesting
+        self.CurrentTaskStatus = TaskStatus.ShortTesting
+
+    def _longtest(self):
+        self.status = HealthStatus.LongTesting
+        self.CurrentTaskStatus = TaskStatus.LongTesting
+
+    def ShortTest(self, callback=None):
+        #self.status = HealthStatus.ShortTesting
+        if(callback != None):
+            self.testCallbacks.append(callback)
+        t = Test(self._smart, 'short', pollingInterval=5, callback=self._testCompletedCallback)
+        self.TaskQueue.AddTask(t, preexec_cb=self._shorttest)
+
+    def LongTest(self, callback=None):
+        #self.status = HealthStatus.ShortTesting
+        if(callback != None):
+            self.testCallbacks.append(callback)
+        t = Test(self._smart, 'long', pollingInterval=5, callback=self._testCompletedCallback)
+        self.TaskQueue.AddTask(t, preexec_cb=self._longtest)
 
     def AbortTest(self):
-        if(self._smart._test_running):
-            self._smart.abort_selftest()
-            self.status = Hdd.STATUS_UNKNOWN
-            self._smart._test_running = False
-            self.estimatedCompletionTime = datetime.datetime.now()
+        if(self.test != None):
+            self.test.abort()
 
-    def Erase(self):
-        if(self.CurrentTask == None):
-            self.CurrentTask = subprocess.Popen(['scrub', '-f', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-            self.CurrentTaskStatus = Hdd.TASK_ERASING
-            return True #We started the task sucessfully
+    def _taskCompletedCallback(self, returncode):
+        if(returncode != 0):
+            self.CurrentTaskStatus = TaskStatus.Error
         else:
-            return False #There is a task running on this hdd. cancel it first
+            self.CurrentTaskStatus = TaskStatus.Idle
+
+    def _erasing(self):
+        self.CurrentTaskStatus = TaskStatus.Erasing
+
+    def Erase(self, callback=None):
+        if not self.TaskQueue.Full:
+            t = EraseTask(self.node, self.Size.replace('GB', '').strip(), callback=self._taskCompletedCallback)
+            r = self.TaskQueue.AddTask(t, preexec_cb=self._erasing)
+            return r #We probably queued the task sucessfully
+        else:
+            return False #Queue is full
+
+    def _imaging(self):
+        self.CurrentTaskStatus = TaskStatus.Imaging
+
+    def Image(self, image, callback=None):
+        if not self.TaskQueue.Full:
+            t = ImageTask(image, self.name, self._taskCompletedCallback)
+            self.TaskQueue.AddTask(t, preexec_cb=self._imaging)
+            return True #We queued the task sucessfully
+        else:
+            return False #Queue is full, wait.
 
     def GetTestProgressString(self):
         if(self.testProgress == None):
@@ -183,96 +244,26 @@ class Hdd:
         return p + "%"
     
     def GetTaskProgressString(self):
-        if(self.CurrentTaskStatus == Hdd.TASK_ERASING):
-            return "Erasing"
-        elif(self.CurrentTaskStatus == Hdd.TASK_NONE):
+        if(self.TaskQueue.CurrentTask != None) and (self.CurrentTaskStatus != TaskStatus.Idle):
+            if(self.CurrentTaskStatus == TaskStatus.Error):
+                return "Err: " + str(self.TaskQueue.CurrentTask._returncode)
+            elif(self.TaskQueue.CurrentTask.Finished):
+                return "Done"
+            elif(self.TaskQueue.CurrentTask != None):
+                return self.TaskQueue.CurrentTask.ProgressString
+            else:
+                return "Busy"
+                
+        else:
             return "Idle"
-        elif(self.CurrentTaskStatus == Hdd.TASK_EXTERNAL):
-            if(type(self.CurrentTask) == proc.core.Process):
-                return "PID " + str(self.CurrentTask.pid)
-        elif(self.CurrentTaskStatus == Hdd.TASK_ERROR):
-            return "Err: " + str(self.CurrentTaskReturnCode)
-        else:
-            return "???"
-
-    def _getRemainingTime(self):
-        complete = self.estimatedCompletionTime
-        now = datetime.datetime.now()
-        if complete > now:
-            timedeltaLeft = (complete - now)
-            mm, ss = divmod(timedeltaLeft.total_seconds(), 60)
-            hh, mm = divmod(mm, 60)
-            s = "%d:%02d:%02d" % (hh, mm, ss)
-            return s
-        else:
-            return "0:00:00"
 
     def UpdateSmart(self):
         self._smart.update()
-        self.testProgress = self._smart._test_progress
         #print(self._smart._test_running)
-
-    def UpdateTask(self):
-        if(self.CurrentTaskStatus != Hdd.TASK_NONE) and (self.CurrentTaskStatus != Hdd.TASK_ERROR):
-            logwrite(str(self.serial) + ": Task running! Task type: " + self.CurrentTaskStatus)
-        else:
-            if(self.CurrentTask != None):
-                if(type(self.CurrentTask) == proc.core.Process):
-                    if(self.CurrentTask.is_alive):
-                        pass
-                    else:
-                        self.CurrentTask = None
-                        self.CurrentTaskStatus = Hdd.TASK_NONE
-            else:
-                logwrite(str(self.serial) + ": No task running.")
-        
-        if(self.CurrentTaskStatus == Hdd.TASK_ERASING):
-            if(self.CurrentTask != None):
-                r = self.CurrentTask.poll() #Returns either a return code, or 'None' type if the process isn't finished.
-                self.CurrentTaskReturnCode = r
-                if(r != None):
-                    if(r == 0):
-                        self.CurrentTaskStatus = Hdd.TASK_NONE
-                        self.CurrentTask = None
-                    else:
-                        self.CurrentTaskStatus = Hdd.TASK_ERROR
-                        self.CurrentTask = None
-                else:
-                    pass #Its still running
-                    #logwrite("Task running: " + str(self.CurrentTask.pid))
-            else:
-                self.CurrentTaskStatus == Hdd.TASK_NONE
-        elif(self.CurrentTaskStatus == Hdd.TASK_EXTERNAL):
-            if(type(self.CurrentTask) == proc.core.Process):
-                if(self.CurrentTask.is_alive):
-                    pass
-                else:
-                    self.CurrentTask = None
-                    self.CurrentTaskStatus = Hdd.TASK_NONE
-        else:
-            pass
                 
-                    
-                    
-
     def refresh(self):
-        #status, testObj, remain = self._smart.get_selftest_result()
-        #self._smart.update()
-
-        if self._smart._test_running == True:
-            self.testProgress = self._smart._test_progress
-            if not (self.status == Hdd.STATUS_TESTING) or (self.status == Hdd.STATUS_LONGTST):
-                self.status = Hdd.STATUS_LONGTST
-            else:
-                pass
+        pass
             
-        elif self._smart.assessment == 'PASS':
-            self.status = Hdd.STATUS_PASSING
-        elif self._smart.assessment == 'FAIL':
-            self.status = Hdd.STATUS_FAILING
-        else:
-            self.status = Hdd.STATUS_UNKNOWN
-
     def __str__(self):
         if(self.serial):
             return self.serial
@@ -287,8 +278,10 @@ class Hdd:
         s = t + " " + str(self.serial) + " at " + str(self.node)
         return "<" + s + ">"
 
+HddManager.register('Hdd', Hdd)
+
 class HddViewModel:
-    def __init__(self, serial=None, node=None, pciAddress=None, status=None, taskStatus=None, taskString=None, testProgress=None, port=None, size=None, isSsd=None, smartResult=None):
+    def __init__(self, serial=None, node=None, taskQueueSize=0, pciAddress=None, status=None, taskStatus=None, taskString=None, testProgress=None, port=None, size=None, isSsd=None, smartResult=None):
         self.serial=serial
         self.node=node
         self.pciAddress=pciAddress
@@ -300,11 +293,12 @@ class HddViewModel:
         self.size=size
         self.isSsd=isSsd
         self.smartResult=smartResult
+        self.taskQueueSize = taskQueueSize
 
     @staticmethod
     def FromHdd(h: Hdd):
         logwrite(str(h))
-        hvm = HddViewModel(serial=h.serial, node=h.node, pciAddress=h.OnPciAddress, status=h.status, testProgress=h.GetTestProgressString(), taskStatus=h.CurrentTaskStatus, taskString=h.GetTaskProgressString(), port=h.Port, size=h.Size, isSsd=h._smart.is_ssd)
+        hvm = HddViewModel(serial=h.serial, node=h.node, pciAddress=h.OnPciAddress, status=h.status, testProgress=h.GetTestProgressString(), taskStatus=h.CurrentTaskStatus, taskString=h.GetTaskProgressString(), port=h.Port, size=h.Size, isSsd=h._smart.is_ssd, taskQueueSize=len(h.TaskQueue.Queue))
         hvm.smartResult = h._smart.__dict__.get('assessment', h._smart.__dict__.get('smart_status', None)) #Pickling mixup https://github.com/freenas/py-SMART/issues/23
-        logwrite("\t" + hvm.status)
+        logwrite("\t" + str(hvm.status))
         return hvm

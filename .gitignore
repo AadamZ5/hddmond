@@ -5,5 +5,5 @@
 ./*.log
 ./portdetector.log
 ./__pycache__
-
+.vscode
 
