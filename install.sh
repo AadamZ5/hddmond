@@ -15,7 +15,7 @@ SRC_DIR="/etc/hddmon"
 
 #install python packages
 echo Installing python packages...
-pip3 install --force-reinstall --ignore-installed git+https://github.com/AadamZ5/py-SMART.git@pickling-fixes pyudev urwid additional_urwid_widgets git+https://github.com/AadamZ5/python-proc.git@dev graphqlclient websockets
+python3.8 -m pip install --force-reinstall --ignore-installed git+https://github.com/AadamZ5/py-SMART.git@pickling-fixes pyudev urwid additional_urwid_widgets git+https://github.com/AadamZ5/python-proc.git@dev graphqlclient websockets dataclasses
 
 #put all of the contents that make us a utility in /etc/hddmon/
 echo Copying files...

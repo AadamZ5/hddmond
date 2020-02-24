@@ -4,7 +4,6 @@ import time
 import subprocess
 import datetime
 import enum
-from multiprocessing.managers import BaseManager
 from .pciaddress import PciAddress
 from .test import Test, TestResult
 from .task import EraseTask, ImageTask, TaskQueue
@@ -42,10 +41,6 @@ class TaskStatus(enum.Enum):
     def __str__(self):
         return self.name
 
-class HddManager(BaseManager):
-    def __init__(self, *args, **kwargs):
-        super(HddManager, self).__init__(*args, **kwargs)
-
 class Hdd:
     """
     Class for storing data about HDDs
@@ -57,11 +52,8 @@ class Hdd:
         # method to avoid modifying the original state.
         state = self.__dict__.copy()
         # Remove the unpicklable entries. Udev references CDLL which won't pickle.
-        del state['_udev']
-
-        #subprocess.Popen objects wont pickle because of threads, but proc.core.Process objects will.
-        if(type(self.CurrentTask) == subprocess.Popen):
-            del state['CurrentTask']
+        state['_udev'] = None
+        state['_task_changed_callbacks'] = None
         return state
 
     def __setstate__(self, state):
@@ -69,8 +61,6 @@ class Hdd:
         self.__dict__.update(state)
         # Restore the udev link
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), self.node)
-        if not ('CurrentTask' in vars(self)):
-            self.CurrentTask = None
         
     @property
     def testProgress(self):
@@ -88,19 +78,26 @@ class Hdd:
         '''
         self.serial = '"HDD"'
         self.model = str()
+        self.wwn = str()
         self.node = node
         self.name = str(node).replace('/dev/', '')
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), node)
         self.OnPciAddress = None
         self.test = None
-        self.testCallbacks = []
+        self._task_changed_callbacks = []
         self._smart = pySMART.Device(self.node)
-        self.Port = None
-        self.TaskQueue = TaskQueue(continue_on_error=False)
-        self.CurrentTask = None
+        self.port = None
+        self.TaskQueue = TaskQueue(continue_on_error=False, task_change_callback=self._task_changed)
         self.CurrentTaskStatus = TaskStatus.Idle
-        self.CurrentTaskReturnCode = None
         self.Size = self._smart.capacity
+        sizeunit = self._smart.capacity.split()
+        unit = sizeunit[1]
+        size = float(sizeunit[0])
+
+        if unit.lower() == 'tb':
+            size = size * 1000
+
+        self.capacity = size
         self._smart_last_call = time.time()
         self.medium = None #SSD or HDD
         self.status = HealthStatus.Default
@@ -134,7 +131,6 @@ class Hdd:
             self.model = ""
             #Idk where we go from here
         
-        
     @staticmethod
     def FromSmartDevice(d: pySMART.Device):
         '''
@@ -161,6 +157,14 @@ class Hdd:
         else:
             return False
 
+    def _task_changed(self, *args, **kw):
+        for c in self._task_changed_callbacks:
+            if c != None and callable(c):
+                c(self, *args, **kw)
+
+    def AddTaskChangeCallback(self, callback):
+        self._task_changed_callbacks.append(callback)
+
     def _testCompletedCallback(self, result: TestResult):
         if(result == TestResult.FINISH_PASSED):
             self.status = HealthStatus.Passing
@@ -174,10 +178,6 @@ class Hdd:
             self.status = self.status
         else:
             self.status = HealthStatus.Warn
-        
-        for i in range(len(self.testCallbacks)):
-            c = self.testCallbacks.pop(i)
-            c(result)
 
         self._taskCompletedCallback(0)
     
@@ -189,17 +189,13 @@ class Hdd:
         self.status = HealthStatus.LongTesting
         self.CurrentTaskStatus = TaskStatus.LongTesting
 
-    def ShortTest(self, callback=None):
+    def ShortTest(self):
         #self.status = HealthStatus.ShortTesting
-        if(callback != None):
-            self.testCallbacks.append(callback)
         t = Test(self._smart, 'short', pollingInterval=5, callback=self._testCompletedCallback)
         self.TaskQueue.AddTask(t, preexec_cb=self._shorttest)
 
-    def LongTest(self, callback=None):
+    def LongTest(self):
         #self.status = HealthStatus.ShortTesting
-        if(callback != None):
-            self.testCallbacks.append(callback)
         t = Test(self._smart, 'long', pollingInterval=5, callback=self._testCompletedCallback)
         self.TaskQueue.AddTask(t, preexec_cb=self._longtest)
 
@@ -277,8 +273,6 @@ class Hdd:
             t = "HDD"
         s = t + " " + str(self.serial) + " at " + str(self.node)
         return "<" + s + ">"
-
-HddManager.register('Hdd', Hdd)
 
 class HddViewModel:
     def __init__(self, serial=None, node=None, taskQueueSize=0, pciAddress=None, status=None, taskStatus=None, taskString=None, testProgress=None, port=None, size=None, isSsd=None, smartResult=None):

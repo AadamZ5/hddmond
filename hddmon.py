@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3.8
 import os, sys
 os.chdir('/etc/hddmon')
 print(os.getcwd())
@@ -14,7 +14,8 @@ import additional_urwid_widgets as ui_special
 import pySMART
 import time
 import threading
-from hddmontools.hdd import Hdd, HddViewModel, HealthStatus, TaskStatus, HddManager
+from hddmond.hddmon_dataclasses import HddData, TaskData, TaskQueueData
+from hddmontools.hdd import Hdd, HddViewModel, HealthStatus, TaskStatus
 from hddmontools.task import TaskQueue
 from hddmontools.pciaddress import PciAddress
 from hddmontools.portdetection import PortDetection
@@ -59,9 +60,9 @@ class TaskQueueWidget(ui.WidgetWrap):
     def paused(self):
         return self._tq.Pause
 
-    def __init__(self, serial, TaskQueue: TaskQueue, task_up_cb=None, task_dn_cb=None, task_del_cb=None, pause_cb=None):
+    def __init__(self, serial, taskqueue: TaskQueueData, task_up_cb=None, task_dn_cb=None, task_del_cb=None, pause_cb=None):
         self._rows_ = []
-        self._tq = TaskQueue
+        self._tq = taskqueue
         self._t_u_cb = task_up_cb
         self._t_d_cb = task_dn_cb
         self._t_r_cb = task_del_cb
@@ -70,7 +71,7 @@ class TaskQueueWidget(ui.WidgetWrap):
         self._gen_rows()
         self._listwalker = ui.SimpleFocusListWalker(self._rows_)
         self._list = ui_special.IndicativeListBox(self._listwalker)
-        self._pause_button = ui.Button(('Pause' if not self._tq.Pause else 'Unpause'), on_press=self._pause, user_data=self.paused)
+        self._pause_button = ui.Button(('Pause' if not self._tq.paused else 'Unpause'), on_press=self._pause, user_data=self.paused)
         self._pile = ui.Pile([('pack',self._pause_button), self._list])
         #self._pile = ui.Divider()
         self._box = ui.LineBox(self._pile)
@@ -78,8 +79,8 @@ class TaskQueueWidget(ui.WidgetWrap):
 
     def _gen_rows(self):
         self._rows_.clear()
-        for i in range(len(self._tq.Queue)):
-            task = self._tq.Queue[i][1]
+        for i in range(len(self._tq.queue)):
+            task = self._tq.queue[i]
             n = ui.Text(str(i+1) + ": ")
             bup = ui.Button('▲', on_press=self._taskdown, user_data=i)
             bdn = ui.Button('▼', on_press=self._taskup, user_data= i)
@@ -90,8 +91,8 @@ class TaskQueueWidget(ui.WidgetWrap):
         _offset = len(self._rows_)
         self._rows_.append(ui.Divider())
         self._rows_.append(ui.Text(('options','▼ completed tasks ▼'), align='center'))
-        for i in range(len(self._tq._task_name_history)):
-            oldt = self._tq._task_name_history[i]
+        for i in range(len(self._tq.completed)):
+            oldt = self._tq.completed[i]
             n = ui.Text(('options',str(i+1) + ": "))
             name = ui.Text(('options',str(oldt)))
             col = ui.Columns([('pack',n), name])
@@ -130,28 +131,26 @@ class TaskQueueWidget(ui.WidgetWrap):
 
     def _pause(self, button, pause):
         if(self._p_cb != None and callable(self._p_cb)):
-            self._p_cb(callback=self._cb_p, serial=self._serial, pause=(not self._tq.Pause))
+            self._p_cb(callback=self._cb_p, serial=self._serial, pause=(not self._tq.paused))
 
-    def _update(self, taskQueue: TaskQueue):
+    def _update(self, taskQueue: TaskQueueData):
         self._tq = taskQueue
-        self._pause_button.set_label(('Pause' if not self._tq.Pause else 'Unpause'))
+        self._pause_button.set_label(('Pause' if not self._tq.paused else 'Unpause'))
         self._rows_.clear()
         self._gen_rows()
 
 class HddWidget(ui.WidgetWrap):
-    def __init__(self, hdd: HddViewModel, app):
+    def __init__(self, hdd: HddData, app):
         self.hdd = hdd
         self.__app__ = app
         self._checked = False
         self._id = ui.Text((self.hdd.status, str(self.hdd.serial)), align='left')
         self._node = ui.Text(('text',self.hdd.node), align='center')
         #self._pci = ui.Text(str(self.hdd.OnPciAddress), align='center')
-        self._task = ui.Text((self.hdd.taskStatus, str(self.hdd.taskString)), align='center')
+        self._task = ui.Text((self.hdd.status, str(self.hdd.task_queue.current_task.string_rep if self.hdd.task_queue.current_task != None else "Idle")), align='center')
         self._port = ui.Text(('text',str(self.hdd.port)), align='center')
-        self._cap = ui.Text(('text',(str(self.hdd.size))), align='center')
-        if(self.hdd.isSsd):
-            self._cap.set_text(str(hdd.size) + " SSD")
-        self._stat = ui.Text((self.hdd.status, self.hdd.smartResult), align='center')
+        self._cap = ui.Text(('text',(str(self.hdd.capacity))), align='center')
+        self._stat = ui.Text((self.hdd.status, self.hdd.assessment), align='center')
         self._check = ui.CheckBox(('text',''), state=self._checked)
         self._check_wrap = ui.AttrMap(self._check, 'line', focus_map=self.__app__.focus_map)
         self._more = ui.Button(('text',"Info"), on_press=self.__app__.ShowHddInfo, user_data=self) #TODO FIx
@@ -178,15 +177,15 @@ class HddWidget(ui.WidgetWrap):
         self._id.set_text((self.hdd.status, str(self.hdd.serial)))
 
         if(self.hdd.status == HealthStatus.ShortTesting) or (self.hdd.status == HealthStatus.LongTesting):
-            self._stat.set_text((self.hdd.status, str(self.hdd.testProgress)))
+            self._stat.set_text((self.hdd.status, str(self.hdd.task_queue.current_task.progress)))
         else:
-            self._stat.set_text((self.hdd.status, str(self.hdd.smartResult)))
+            self._stat.set_text((self.hdd.status, str(self.hdd.assessment)))
         
-        if(self.hdd.taskStatus != TaskStatus.Idle):
-            self._task.set_text((self.hdd.taskStatus, str(self.hdd.taskString) + (" (" + str(self.hdd.taskQueueSize) + ")" if self.hdd.taskQueueSize > 0 else "")))
-            self._cap.set_text((self.hdd.taskStatus, self.hdd.size))
+        if(self.hdd.status != TaskStatus.Idle):
+            self._task.set_text((self.hdd.status, str(self.hdd.task_queue.current_task.string_rep) + (" (" + str(len(self.hdd.task_queue.queue)) + ")" if len(self.hdd.task_queue.queue) > 0 else "")))
+            self._cap.set_text((self.hdd.status, self.hdd.size))
         else:
-            self._task.set_text((self.hdd.taskStatus, str(self.hdd.taskString) + (" (" + str(self.hdd.taskQueueSize) + ")" if self.hdd.taskQueueSize > 0 else "")))
+            self._task.set_text((self.hdd.status, "Idle" + (" (" + str(len(self.hdd.task_queue.queue)) + ")" if len(self.hdd.task_queue.queue) > 0 else "")))
             self._cap.set_text(('text',self.hdd.size))
 
     def get_attr_map(self):
@@ -260,7 +259,7 @@ class Commander:
                     if(callback) and callable(callback):
                         callback(data)
         
-commander = Commander(('localhost', 63963), b'H4789HJF394615R3DFESZFEZCDLPOQ')
+commander = Commander(('localhost', 63962), b'H4789HJF394615R3DFESZFEZCDLPOQ')
 
 class Application(object):
     def __init__(self):
@@ -457,21 +456,21 @@ class Application(object):
         commander.send_command('image', data={'image': image.name, 'serials': serialList['serials']}, callback=self.resetLayout)
         self.ShowLoadingDialog(text=['Starting image(s)...'])
 
-    def processHddData(self, data):
+    def processHddData(self, response):
         #data is (response, data)
-        hdds = data[1]
+        data = response[1]
+        hdds = data.get('hdds', None)
+        if hdds == None:
+            return
         self.hddobjs = hdds
         localhdds = list(hdds).copy()
         foundhdds = []
 
         for hw in self.hddEntries:#look for hdds in here.
 
-            logwrite("Checking " + str(hw.hdd.serial))
             found = False
             for h in localhdds:
-                logwrite("\t against " + h.serial)
                 if(str(h.serial) == str(hw.hdd.serial)) and not (h in foundhdds):
-                    logwrite("\t===FOUND===")
                     hvm = HddViewModel.FromHdd(h)
                     hw.Update(hvm) #Update the widget with the new hdd info
                     foundhdds.append(h)
@@ -479,25 +478,24 @@ class Application(object):
                     break 
             
             if found == False: #Found = false, remove the widget.
-                logwrite("Removed " + str(hw.hdd.serial))
                 self.hddEntries.remove(hw)
         
-        logwrite("Found HDDs: " + str(foundhdds))
         for h in foundhdds:#Hdd objects found, remove from the localhdds list
             for hr in localhdds:
                 if hr.serial == h.serial:
                     localhdds.remove(hr)
 
-        logwrite("Leftover HDDs: " + str(localhdds))
         for hrem in localhdds: #Process the leftover hdds for which we didn't have a widget currently representing
-            hvm = HddViewModel.FromHdd(hrem)
-            hddwidget = HddWidget(hvm, self)
+            hddwidget = HddWidget(hrem, self)
             self.hddEntries.append(hddwidget)
 
-    def processImages(self, images):
+    def processImages(self, data):
+        images = data.get('images', None)
+        if images == None:
+            self.ShowErrorDialog(text=['No images were recieved.'])
+            return
         self.images = images
         self.images.reverse()
-
 
     def _reinitializeTerminal(self, loop, **kwargs):
         self.Terminal = ui.Terminal(['bash'], main_loop=self.loop, escape_sequence='tab')

@@ -19,6 +19,7 @@ class Task:
         self.name = taskName
         self._progressString = self.name
         self._callback = None
+        self.returncode = None
 
     @property
     def Progress(self):
@@ -46,7 +47,7 @@ class Task:
     def Finished(self):
         return True
 
-    def start(self):
+    def start(self, progress_callback=None):
         '''
         Should be overridden in sub-classes to define the starting point of the operation.
         This is necessary for task-queues.
@@ -61,7 +62,7 @@ class Task:
 
 class TaskQueue:
     '''
-    A container that manages and handles multiple tasks.
+    A container that manages and handles a queue of multiple tasks.
     '''
 
     def __getstate__(self):
@@ -81,12 +82,13 @@ class TaskQueue:
                 self._create_queue_thread()
         else:
             self._pause = value
+        self._taskchanged_cb(action='pausechange', data={'paused': self._pause})
 
     @property
     def Full(self):
         return len(self.Queue) == self.maxqueue
 
-    def __init__(self, maxqueue=4, between_task_wait=1, continue_on_error=True):
+    def __init__(self, maxqueue=4, between_task_wait=1, continue_on_error=True, task_change_callback=None):
         self.Queue = [] #list of (preexec_cb, task, callback)
         self.CurrentTask = None
         self._currentcb = None
@@ -96,6 +98,7 @@ class TaskQueue:
         self._pause = False
         self._queue_thread = None
         self._task_name_history = []
+        self._task_change_callback = task_change_callback
 
     def AddTask(self, task: Task, preexec_cb=None, index=None):
         if not (len(self.Queue) >= self.maxqueue):
@@ -110,6 +113,7 @@ class TaskQueue:
                 self.Queue.append((preexec_cb, task, cb))
             if(len(self.Queue) == 1 and self.CurrentTask == None): #We added the first task of this chain-reaction. Kick off the queue.
                 self._create_queue_thread()
+            self._taskchanged_cb(action='taskadded', data={'taskqueue': self})
             return True
         else:
             return False
@@ -126,10 +130,14 @@ class TaskQueue:
 
         self.CurrentTask = None
         self._currentcb = None
+        self._taskchanged_cb(action='taskfinished', data={'task': self.CurrentTask})
         if(self.Pause == True):
             return
         else:
             self._create_queue_thread()
+
+    def _task_progresscb(self, progress=None, string=None):
+        self._taskchanged_cb(action='taskprogress', data={'taskqueue': self})
 
     def _create_queue_thread(self):
         self._queue_thread = threading.Thread(target=self._launch_new_task)
@@ -146,20 +154,22 @@ class TaskQueue:
                 pcb()
             self.CurrentTask = t
             self._currentcb = cb
-            self.CurrentTask.start()
+            self._taskchanged_cb(action='tasklistmod', data={'taskqueue': self})
+            self.CurrentTask.start(progress_callback=self._task_progresscb)
         else:
             return
 
     def PushUp(self, index):
         lastpause = self.Pause
         self.Pause = True
-        last_index = self.maxqueue-1 #Don't shove above our max index
+        last_index = len(self.Queue)-1 #Don't shove above our max index
         if(index >= last_index):
             return
         t = self.Queue[index]
         del self.Queue[index]
         self.Queue.insert(index+1, t)
         self.Pause = lastpause
+        self._taskchanged_cb(action='tasklistmod', data={'taskqueue': self})
 
     def PushDown(self, index):
         lastpause = self.Pause
@@ -170,6 +180,21 @@ class TaskQueue:
         del self.Queue[index]
         self.Queue.insert(index-1, t)
         self.Pause = lastpause
+        self._taskchanged_cb(action='tasklistmod', data={'taskqueue': self})
+
+    def SetIndex(self, index, newindex):
+        lastpause = self.Pause
+        self.Pause = True
+        if(newindex < 0): #Dont shove below 0 index
+            return
+        last_index = len(self.Queue)-1 
+        if(newindex > last_index): #Don't shove above our max index
+            return
+        t = self.Queue[index]
+        del self.Queue[index]
+        self.Queue.insert(newindex, t)
+        self.Pause = lastpause
+        self._taskchanged_cb(action='tasklistmod', data={'taskqueue': self})
 
     def RemoveTask(self, index):
         lastpause = self.Pause
@@ -178,13 +203,19 @@ class TaskQueue:
             return
         del self.Queue[index]
         self.Pause = lastpause
+        self._taskchanged_cb(action='tasklistmod', data={'taskqueue': self})
 
     def AbortCurrentTask(self, pause=True):
         if(self.CurrentTask != None):
             self.Pause = pause
             #self._task_name_history.append(self.CurrentTask.name)
+            t = self.CurrentTask
             self.CurrentTask.abort()
+            self._taskchanged_cb(action='taskabort', data={'task': t})
         
+    def _taskchanged_cb(self, *args, **kw):
+        if self._task_change_callback != None and callable(self._task_change_callback):
+            self._task_change_callback(*args, **kw)
 
 class ExternalTask(Task):
 
@@ -217,7 +248,7 @@ class ExternalTask(Task):
         if(start):
             self._pollingThread.start()
         
-    def start(self):
+    def start(self, progress_callback=None):
         if(self._pollingThread.isAlive):
             return False
         else:
@@ -275,6 +306,7 @@ class EraseTask(Task):
         self._procview = None
         super(EraseTask, self).__init__("Erase")
         self._callback = callback
+        self._progress_cb = None
         
 
     @property
@@ -303,7 +335,8 @@ class EraseTask(Task):
     def Finished(self):
         return self._returncode != None
         
-    def start(self):
+    def start(self, progress_callback=None):
+        self._progress_cb = progress_callback
         self._subproc = subprocess.Popen(['scrub', '-f', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         self._PID = self._subproc.pid
         self._procview = proc.core.Process.from_pid(self._PID)
@@ -316,13 +349,22 @@ class EraseTask(Task):
             self._subproc.terminate()
 
     def _monitorProgress(self):
+        if(self._progress_cb != None) and callable(self._progress_cb):
+            self._progress_cb(self.Progress, self._progressString)
+        lastprogress = self._progress
         while self._monitor and (self._returncode == None):
+            
             self._returncode = self._subproc.poll()
             if(self._returncode == None):
                 io = self._procview.io
                 self._progress = int(io['write_bytes'] / self._cap_in_bytes)
                 self._progressString = "Erasing " + str(self.Progress) + "%" 
                 time.sleep(self._pollingInterval)
+
+                if(self._progress != lastprogress):
+                    if(self._progress_cb != None) and callable(self._progress_cb):
+                        self._progress_cb(self.Progress, self._progressString)
+                    lastprogress = self._progress
         
         if(self._callback != None):
             self._callback(self._returncode)
@@ -361,15 +403,21 @@ class ImageTask(Task):
         self._poll = True
         self._pollingInterval = pollingInterval
         self._pollingThread = threading.Thread(target=self._monitor, name=str(diskname) + "_cloneTask")
-        super(ImageTask, self).__init__("Image")
+        super(ImageTask, self).__init__("Image " + self._image.name)
         self._callback = callback
+        self._progress_cb = None
         
-    def start(self):
+    def start(self, progress_callback=None):
         self._subproc = subprocess.Popen(['/usr/sbin/ocs-sr', '-e1', 'auto', '-e2', '-nogui', '-batch', '-r', '-irhr', '-ius', '-icds', '-j2', '-k1', '-cmf', '-scr', '-p', 'true', 'restoredisk', self._image.name, self._diskname], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)        
         self._PID = self._subproc.pid
         self._proctree = get_process_tree().find(pid=self.PID, recursive=True)
         self._progressString = "Loading " + self._image.name
         self._pollingThread.start()
+        self._progress_cb = progress_callback
+
+    def _call_progress_cb(self):
+        if(self._progress_cb != None) and callable(self._progress_cb):
+            self._progress_cb(None, self._progressString)
 
     def _monitor(self):
         for i in range(len(self._image.partitions)): #The partclone.ntfs process will spawn once for each partition. Watch for partclone.ntfs as many times as there are partitions to clone.
@@ -384,10 +432,12 @@ class ImageTask(Task):
                 if p != None:
                     self._partclone_procview = p
                     self._progressString = "Cloning " + self._image.name + ":" + str(i+1) + "/" + str(len(self._image.partitions))
+                    self._call_progress_cb()
                     self._cloning = True
                 if m != None:
                     self._md5sum_procview = p
                     self._progressString = "Checking " + self._image.name
+                    self._call_progress_cb()
                     self._checking = True
 
             while self._cloning == True and self._poll == True and self._md5sum_procview == None: #Wait for the end of the partclone.ntfs process, or skip these loops if we see the md5sum process. Possibility to incorrectly count partitions
@@ -406,6 +456,7 @@ class ImageTask(Task):
             if p != None:
                 self._md5sum_procview = p
                 self._progressString = "Checking " + self._image.name
+                self._call_progress_cb()
                 self._checking = True
 
         while self._checking == True and self._poll == True: #Wait for the end of the md5sum process
