@@ -61,6 +61,7 @@ class Test(Task):
         self._progressString = "Test"
         self._callback = callback
         self._progress_cb = None
+        self._last_progress = self._progress
 
     def start(self, progress_callback=None):
         if not self._started:
@@ -137,10 +138,12 @@ class Test(Task):
         except Exception as e:
             pass
         self._progressString = "Testing " + str(self._progress) + "%"
-        if(self._progressCallback != None) and callable(self._progressCallback):
-            self._progressCallback(progress)
-        if(self._progress_cb != None) and callable(self._progress_cb):
-            self._progress_cb(self._progress, self._progressString)
+        if self._progress != self._last_progress:
+            if(self._progressCallback != None) and callable(self._progressCallback):
+                self._progressCallback(progress)
+            if(self._progress_cb != None) and callable(self._progress_cb):
+                self._progress_cb(self._progress, self._progressString)
+            self._last_progress = self._progress
         
 
             

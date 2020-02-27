@@ -464,9 +464,11 @@ class ListModel:
         self.updateLoop()
 
     def stop(self):
+        print("hddmanager stopping...")
         self._loopgo = False
+        print("stopping udev observer...")
         self.observer.stop()
-
+        print("stopping tasks...")
         for h in self.hdds:
             h.TaskQueue.Pause = True
             if(h.CurrentTaskStatus != TaskStatus.External) and (h.CurrentTaskStatus != TaskStatus.Idle) and (h.CurrentTaskStatus != TaskStatus.Error):

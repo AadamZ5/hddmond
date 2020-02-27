@@ -10,6 +10,7 @@ class ClientDataMulticaster:
         self._client_data = {} #{client: data[]}
 
     def register(self, address):
+        print("Registering websocket at " + str(address) + " to broadcast list")
         self._client_data.update({address: []})
         return self._client_data[address]
 
@@ -18,9 +19,11 @@ class ClientDataMulticaster:
             self._client_data[k].append(data)
 
     def unregister(self, address):
+        print("Unregistering websocket at " + str(address) + " from broadcast list")
         try:
             del self._client_data[address]
         except KeyError:
+            print("Error: Tried to delete a websocket that was never registered!")
             pass
 
 
@@ -46,6 +49,7 @@ class WebsocketServer(GenericServer):
 
     async def unregister(self, websocket_addr):
         del self.clientlist[websocket_addr]
+        self.clientdata_multicast.unregister(websocket_addr)
 
     async def consumer_handler(self, ws, path, *args, **kwargs):
         await self.register(ws)
@@ -55,6 +59,8 @@ class WebsocketServer(GenericServer):
                 m = jsonpickle.loads(message)
             except Exception:
                 print("Error decoding message " + str(message))
+                send = jsonpickle.dumps({"error": "Couldn't parse JSON data!"}, unpicklable=False)
+                await ws.send(send)
             command = m.get('command', None)
             data = m.get('data', dict())
 
@@ -62,6 +68,7 @@ class WebsocketServer(GenericServer):
                 r = self.find_action(str(command), **data)
                 r_json = jsonpickle.dumps(r, unpicklable=False)
                 await ws.send(r_json)
+
         await self.unregister(ws.remote_address)
         
     async def producer_handler(self, ws, path, *args, **kw):
@@ -78,7 +85,6 @@ class WebsocketServer(GenericServer):
         done, pending = await asyncio.wait([c_task, p_task,], return_when=asyncio.FIRST_COMPLETED)
         for task in pending: #This executes when the async call above finishes.
             task.cancel() #Cancel any remaining task. 
-        self.clientdata_multicast.unregister(ws.remote_address)
 
     def _make_server(self, loop):
         asyncio.set_event_loop(loop)

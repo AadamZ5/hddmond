@@ -64,3 +64,4 @@ if __name__ == '__main__':
     #signal.signal(signal.SIGKILL, app.stop) #We should let this kill the program instead of trying to handle it
     signal.signal(signal.SIGUSR1, app.stop)
     app.start()
+    exit(0)

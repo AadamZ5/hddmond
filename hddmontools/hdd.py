@@ -90,14 +90,22 @@ class Hdd:
         self.TaskQueue = TaskQueue(continue_on_error=False, task_change_callback=self._task_changed)
         self.CurrentTaskStatus = TaskStatus.Idle
         self.Size = self._smart.capacity
-        sizeunit = self._smart.capacity.split()
-        unit = sizeunit[1]
-        size = float(sizeunit[0])
+        
+        try:
+            sizeunit = self._smart.capacity.split()
+            unit = sizeunit[1]
+            size = float(sizeunit[0])
 
-        if unit.lower() == 'tb':
-            size = size * 1000
+            if unit.lower() == 'tb':
+                size = size * 1000
 
-        self.capacity = size
+            self.capacity = size
+        except AttributeError:
+            pass
+        except Exception as e:
+            print("Exception occurred while parsing capacity of drive " + self.serial)
+            print("This drive may not function properly")
+
         self._smart_last_call = time.time()
         self.medium = None #SSD or HDD
         self.status = HealthStatus.Default
