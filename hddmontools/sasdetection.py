@@ -17,10 +17,12 @@ class SasDevice:
             for i in range(len(lines)):
                 if("Controller information" in str(lines[i]).strip()):
                     startIndex = i
+                    break
             
             for i in range(startIndex + 2, len(lines)):
                 if(lines[i].startswith("--------")):
                     endIndex = i
+                    break
 
             #Should end up with this
             # Controller information                                                    | i = 0

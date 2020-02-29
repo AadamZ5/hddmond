@@ -300,7 +300,7 @@ class HddViewModel:
     @staticmethod
     def FromHdd(h: Hdd):
         logwrite(str(h))
-        hvm = HddViewModel(serial=h.serial, node=h.node, pciAddress=h.OnPciAddress, status=h.status, testProgress=h.GetTestProgressString(), taskStatus=h.CurrentTaskStatus, taskString=h.GetTaskProgressString(), port=h.Port, size=h.Size, isSsd=h._smart.is_ssd, taskQueueSize=len(h.TaskQueue.Queue))
+        hvm = HddViewModel(serial=h.serial, node=h.node, pciAddress=h.OnPciAddress, status=h.status, testProgress=h.GetTestProgressString(), taskStatus=h.CurrentTaskStatus, taskString=h.GetTaskProgressString(), port=h.port, size=h.Size, isSsd=h._smart.is_ssd, taskQueueSize=len(h.TaskQueue.Queue))
         hvm.smartResult = h._smart.__dict__.get('assessment', h._smart.__dict__.get('smart_status', None)) #Pickling mixup https://github.com/freenas/py-SMART/issues/23
         logwrite("\t" + str(hvm.status))
         return hvm

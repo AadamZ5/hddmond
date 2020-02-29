@@ -36,8 +36,6 @@ class ListModel:
         self.monitor = pyudev.Monitor.from_netlink(self._udev_context)
         self.monitor.filter_by(subsystem='block', device_type='disk')
         self.PortDetector = hddmontools.portdetection.PortDetection()
-        #self.multiprocserver = MultiprocSock()
-        #self.websockserver = WebsocketServer()
         self.AutoShortTest = False
         self._loopgo = True
         self.stuffRunning = False
@@ -382,7 +380,7 @@ class ListModel:
             if(notFound): #If we didn't find it already in our list, go ahead and add it.
                 h = Hdd.FromSmartDevice(d)
                 h.OnPciAddress = self.PortDetector.GetPci(h._udev.sys_path)
-                h.Port = self.PortDetector.GetPort(h._udev.sys_path, h.OnPciAddress, h.serial)
+                h.port = self.PortDetector.GetPort(h._udev.sys_path, h.OnPciAddress, h.serial)
                 self.addHdd(h)
                 print("Added /dev/"+d.name)
         print("Added existing devices")
@@ -425,7 +423,7 @@ class ListModel:
             hdd = Hdd.FromUdevDevice(device)
             self.PortDetector.Update()
             hdd.OnPciAddress = self.PortDetector.GetPci(hdd._udev.sys_path)
-            hdd.Port = self.PortDetector.GetPort(hdd._udev.sys_path, hdd.OnPciAddress, hdd.serial)
+            hdd.port = self.PortDetector.GetPort(hdd._udev.sys_path, hdd.OnPciAddress, hdd.serial)
             self.addHdd(hdd)
         elif(action == 'remove') and (device != None):
             self.removeHddStr(device.device_node)

@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import AbstractEventLoop
 import threading
 import websockets
 from .genericserver import GenericServer
@@ -58,7 +59,7 @@ class WebsocketServer(GenericServer):
             try:
                 m = jsonpickle.loads(message)
             except Exception:
-                print("Error decoding message " + str(message))
+                print("Error decoding message from " + str(ws.remote_address) + ". Message: " + str(message))
                 send = jsonpickle.dumps({"error": "Couldn't parse JSON data!"}, unpicklable=False)
                 await ws.send(send)
             command = m.get('command', None)
@@ -86,7 +87,7 @@ class WebsocketServer(GenericServer):
         for task in pending: #This executes when the async call above finishes.
             task.cancel() #Cancel any remaining task. 
 
-    def _make_server(self, loop):
+    def _make_server(self, loop: AbstractEventLoop):
         asyncio.set_event_loop(loop)
         self.ws = loop.run_until_complete(websockets.serve(self.handler, "0.0.0.0", 8765))
         loop.run_forever()
@@ -101,5 +102,5 @@ class WebsocketServer(GenericServer):
 
     def stop(self):
         self.ws.close()
-        self.loop.stop()
+        self.loop.call_soon_threadsafe(self.loop.stop) #https://stackoverflow.com/questions/46093238/python-asyncio-event-loop-does-not-seem-to-stop-when-stop-method-is-called?answertab=votes#tab-top
         self.loopthread.join()

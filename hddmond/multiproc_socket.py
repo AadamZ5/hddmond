@@ -90,6 +90,9 @@ class MultiprocSock(GenericServer):
         self.serverThread.start()
 
     def stop(self):
+        self._loopgo = False
+        self.serverThread.join()
+        self.server.close()
         for c in self.clientlist:
             client = c[0]
             addr = c[1]
