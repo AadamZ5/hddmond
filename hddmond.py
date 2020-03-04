@@ -1,8 +1,8 @@
 #!/usr/bin/python3.8
-from hddmond.hddmanager import ListModel
-from hddmond.websocket import WebsocketServer
-from hddmond.multiproc_socket import MultiprocSock
-from hddmond.hddmon_dataclasses import HddData, TaskData, TaskQueueData
+from hddmondtools.hddmanager import ListModel
+from hddmondtools.websocket import WebsocketServer
+from hddmondtools.multiproc_socket import MultiprocSock
+from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData
 import signal
 
 

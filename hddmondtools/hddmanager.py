@@ -39,8 +39,6 @@ class ListModel:
         self.AutoShortTest = False
         self._loopgo = True
         self.stuffRunning = False
-        self.gclient = graphqlclient.GraphQLClient('http://172.23.2.202:4000')
-        
         
         # self.websockserver.broadcast_data()
 
@@ -133,12 +131,13 @@ class ListModel:
         if serial != None:
             for h in self.hdds:
                 if (h.serial == serial):
-                    return {'hdds': [HddData.FromHdd(h),]}
+                    return {'hdd': HddData.FromHdd(h)}
         else:
             hdddata = []
             for h in self.hdds:
                 hdddata.append(HddData.FromHdd(h))
             return {'hdds': hdddata}
+        return {'error': 'No hdd(s) found for constraints!'}
 
     def eraseBySerial(self, *args, **kw): #Starts an erase operation on the drives matching the input serials
         r = False

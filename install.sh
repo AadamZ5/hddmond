@@ -13,9 +13,12 @@ systemctl stop hddmon-daemon
 LINK_DIR="/usr/bin/hddmon"
 SRC_DIR="/etc/hddmon"
 
+#Install python3.8
+apt install python3.8
+
 #install python packages
 echo Installing python packages...
-python3.8 -m pip install --force-reinstall --ignore-installed git+https://github.com/AadamZ5/py-SMART.git@pickling-fixes pyudev urwid additional_urwid_widgets git+https://github.com/AadamZ5/python-proc.git@dev graphqlclient websockets dataclasses
+python3.8 -m pip install --force-reinstall --ignore-installed git+https://github.com/AadamZ5/py-SMART.git@pickling-fixes pyudev urwid additional_urwid_widgets git+https://github.com/AadamZ5/python-proc.git@dev graphqlclient websockets dataclasses py-ts-interfaces jsonpickle
 
 #put all of the contents that make us a utility in /etc/hddmon/
 echo Copying files...
