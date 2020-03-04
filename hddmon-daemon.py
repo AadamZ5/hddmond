@@ -335,9 +335,6 @@ class ListModel:
 
         print("Server loop stopped")
 
-    def websocket_loop(self):
-        pass
-
     def client_loop(self, client=None):
         print("Split client into seperate thread")
         futuremsg = None
@@ -569,17 +566,12 @@ class ListModel:
         self.server.close()
         self.observer.stop()
         self.updateThread.join()
-        for c in self.clientlist:
-            client = c[0]
-            addr = c[1]
-            thread = c[2]
-            thread.join()
 
         for h in self.hdds:
             h.TaskQueue.Pause = True
             if(h.CurrentTaskStatus != TaskStatus.External) and (h.CurrentTaskStatus != TaskStatus.Idle):
-                if(h.CurrentTaskStatus == TaskStatus.External):
-                    print("Detaching monitor of external process " + str(h.TaskQueue.CurrentTask.PID) + " on " + h.serial)
+                if(h.CurrentTaskStatus == TaskStatus.External) or (h.CurrentTaskStatus == TaskStatus.LongTesting) or (h.CurrentTaskStatus == TaskStatus.ShortTesting):
+                    print("Detaching task " + str(h.TaskQueue.CurrentTask.name) + " on " + h.serial)
                     h.TaskQueue.CurrentTask.detach()
                 else:
                     print("Aborting task " + str(h.TaskQueue.CurrentTask.name) + " (PID: " + str(h.TaskQueue.CurrentTask.PID) + ") on " + h.serial)

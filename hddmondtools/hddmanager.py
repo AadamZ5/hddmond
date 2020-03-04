@@ -1,11 +1,12 @@
+#!/usr/bin/python3
 import os, sys
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.path.pardir))
 import subprocess
 import multiprocessing.connection as ipc
 import proc.core
 import pyudev
 from pySMART import Device
-import re
-from hddmontools.hdd import Hdd, HealthStatus, TaskStatus, HddManager
+from hddmontools.hdd import Hdd, HealthStatus, TaskStatus
 from hddmontools.task import ExternalTask
 from hddmontools.image import DiskImage, Partition
 import pySMART
@@ -16,15 +17,18 @@ import hddmontools.portdetection
 import signal
 from socket import timeout
 import graphqlclient
-import websockets
+from .websocket import WebsocketServer
+from .multiproc_socket import MultiprocSock
+from .hddmon_dataclasses import HddData, TaskQueueData, TaskData
 
 class ListModel:
     """
     Data model that holds hdd list.
     """
 
-    def __init__(self):
+    def __init__(self, taskChangedCallback = None):
         self.updateInterval = 3
+        self.task_change_outside_callback = taskChangedCallback
         self.hdds = []
         self.blacklist_hdds = self.load_blacklist_file()
         self.images = []
@@ -33,15 +37,35 @@ class ListModel:
         self.monitor.filter_by(subsystem='block', device_type='disk')
         self.PortDetector = hddmontools.portdetection.PortDetection()
         self.AutoShortTest = False
-        self.updateDevices()
-        self.loadDiskImages()
         self._loopgo = True
         self.stuffRunning = False
-        self.updateThread = threading.Thread(target=self.updateLoop, name="HddUpdateThread")
-        self.gclient = graphqlclient.GraphQLClient('http://172.23.2.202:4000')
 
-        self.clientlist = [] #list of (client, addr, thread)
-        
+    def task_change_callback(self, hdd: Hdd, *args, **kwargs):
+
+        #####
+        #
+        # The task queue will call this callback on any registered hdd when something changes.
+        # A list of possible "action"s are:
+        #
+        #   pausechange     (data is {paused: bool})
+        #   taskadded       (data is {task: Task})
+        #   taskfinished    (data is {task: Task, returncode: Int})
+        #   tasklistmod     (data is {tasklist: Task[]})
+        #   taskabort       (data is {})
+        #
+        #####
+
+
+        data = kwargs.get('data', None)
+        action = kwargs.get('action', None)
+
+        if(data == None) or (action == None):
+            return
+
+        data.update({'serial': hdd.serial})
+
+        if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
+            self.task_change_outside_callback({'update': action, 'data': {'serial': hdd.serial, 'taskqueue': TaskQueueData.FromTaskQueue(hdd.TaskQueue)}})
 
     def update_blacklist_file(self):
         import json
@@ -99,6 +123,20 @@ class ListModel:
                 break
         return False
             
+    def sendHdds(self, *args, **kw):
+        serial = kw.get('serial', None)
+
+        if serial != None:
+            for h in self.hdds:
+                if (h.serial == serial):
+                    return {'hdd': HddData.FromHdd(h)}
+        else:
+            hdddata = []
+            for h in self.hdds:
+                hdddata.append(HddData.FromHdd(h))
+            return {'hdds': hdddata}
+        return {'error': 'No hdd(s) found for constraints!'}
+
     def eraseBySerial(self, *args, **kw): #Starts an erase operation on the drives matching the input serials
         r = False
         l = threading.Lock()
@@ -164,6 +202,9 @@ class ListModel:
         l.release()
         return True
 
+    def sendImages(self, *args, **kwargs):
+        return {'images': self.images}
+
     def imageBySerial(self, *args, **kw): #applies an image on the drives matching the input serials
         l = threading.Lock()
         l.acquire()
@@ -215,6 +256,7 @@ class ListModel:
         serial = kw.get('serial', None)
         action = kw.get('action', None)
         index = kw.get('index', None)
+        newindex = kw.get('newindex', None)
 
         if(serial == None):
             return (False, 'No serial supplied')
@@ -235,6 +277,12 @@ class ListModel:
                     h.TaskQueue.PushDown(index)
                 elif(action == 'remove'):
                     h.TaskQueue.RemoveTask(index)
+                elif(action == 'set'):
+                    if(newindex == None):
+                        return (False, 'No new index given with set operation')
+                    h.TaskQueue.SetIndex(index, newindex)
+                else:
+                    return (False, 'Unknown modifyqueue action \'' + str(action) + '\'')
                 break;
 
         l.release()
@@ -279,9 +327,9 @@ class ListModel:
 
     def updateLoop(self):
         '''
-        This loop should be run in a separate thread. Good luck not doing that.
+        This loop should be run in a separate thread. Watches for external process and smart tests not initialized by this program.
         '''
-        print("Update thread running")
+        print("Loop running")
         smart_coldcall_interval = 30.0 #seconds
         while self._loopgo:
             busy = False
@@ -329,7 +377,7 @@ class ListModel:
             if(notFound): #If we didn't find it already in our list, go ahead and add it.
                 h = Hdd.FromSmartDevice(d)
                 h.OnPciAddress = self.PortDetector.GetPci(h._udev.sys_path)
-                h.Port = self.PortDetector.GetPort(h._udev.sys_path, h.OnPciAddress, h.serial)
+                h.port = self.PortDetector.GetPort(h._udev.sys_path, h.OnPciAddress, h.serial)
                 self.addHdd(h)
                 print("Added /dev/"+d.name)
         print("Added existing devices")
@@ -347,6 +395,10 @@ class ListModel:
         self.hdds.append(hdd)
         if(self.AutoShortTest == True) and (hdd.status != HealthStatus.ShortTesting and hdd.status != HealthStatus.LongTesting):
             hdd.ShortTest()
+        hdd.AddTaskChangeCallback(self.task_change_callback)
+
+        if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
+            self.task_change_outside_callback({'update': 'add', 'data': HddData.FromHdd(hdd)})
 
     def removeHddHdd(self, hdd: Hdd):
         self.removeHddStr(hdd.node)
@@ -355,6 +407,8 @@ class ListModel:
         for h in self.hdds:
             if (h.node == node):
                 try:
+                    if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
+                        self.task_change_outside_callback({'update': 'remove', 'data': HddData.FromHdd(h)})
                     self.hdds.remove(h)
                 except KeyError as e:
                     print("Error removing hdd by node!:\n" + str(e))
@@ -366,7 +420,7 @@ class ListModel:
             hdd = Hdd.FromUdevDevice(device)
             self.PortDetector.Update()
             hdd.OnPciAddress = self.PortDetector.GetPci(hdd._udev.sys_path)
-            hdd.Port = self.PortDetector.GetPort(hdd._udev.sys_path, hdd.OnPciAddress, hdd.serial)
+            hdd.port = self.PortDetector.GetPort(hdd._udev.sys_path, hdd.OnPciAddress, hdd.serial)
             self.addHdd(hdd)
         elif(action == 'remove') and (device != None):
             self.removeHddStr(device.device_node)
@@ -396,37 +450,33 @@ class ListModel:
                     print("Error adding image at " + directory + ":\n" + str(e))
 
     def start(self):
-        self._loopgo = True
         self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
         self.observer.start()
-
-        self.updateThread = threading.Thread(target=self.updateLoop)
-        self.updateThread.start()
-        self.serverLoop()
+        self._loopgo = True
+        self.updateDevices()
+        self.loadDiskImages()
+        print("Done initializing.")
+        self.updateLoop()
 
     def stop(self):
+        print("hddmanager stopping...")
         self._loopgo = False
-        self.server.close()
+        print("stopping udev observer...")
         self.observer.stop()
-        self.updateThread.join()
-        for c in self.clientlist:
-            client = c[0]
-            addr = c[1]
-            thread = c[2]
-            thread.join()
-
+        print("stopping tasks...")
         for h in self.hdds:
             h.TaskQueue.Pause = True
-            if(h.CurrentTaskStatus != TaskStatus.External) and (h.CurrentTaskStatus != TaskStatus.Idle):
-                if(h.CurrentTaskStatus == TaskStatus.External):
-                    print("Detaching monitor of external process " + str(h.TaskQueue.CurrentTask.PID) + " on " + h.serial)
+            if(h.CurrentTaskStatus != TaskStatus.External) and (h.CurrentTaskStatus != TaskStatus.Idle) and (h.CurrentTaskStatus != TaskStatus.Error):
+                if(h.CurrentTaskStatus == TaskStatus.External) or (h.CurrentTaskStatus == TaskStatus.LongTesting) or (h.CurrentTaskStatus == TaskStatus.ShortTesting):
+                    print("Detaching task " + str(h.TaskQueue.CurrentTask.name) + " on " + h.serial)
                     h.TaskQueue.CurrentTask.detach()
                 else:
                     print("Aborting task " + str(h.TaskQueue.CurrentTask.name) + " (PID: " + str(h.TaskQueue.CurrentTask.PID) + ") on " + h.serial)
                     h.TaskQueue.CurrentTask.abort()
-            if(h.status == HealthStatus.LongTesting or h.status == HealthStatus.ShortTesting):
+            if(h.status == HealthStatus.LongTesting or h.status == HealthStatus.ShortTesting) and h.test != None:
                 print("Detaching from SMART test on " + h.serial)
-                h.test.detach()
+                if h.test != None:
+                    h.test.detach()
 
     def signal_close(self, signalNumber, frame):
         print("Got signal " + str(signalNumber) + ", quitting.")
@@ -445,3 +495,14 @@ class ListModel:
         self.updateDevices()
         self.loadDiskImages()
         self.start()
+
+if __name__ == '__main__':
+    hd = ListModel()
+    signal.signal(signal.SIGINT, hd.signal_close)
+    signal.signal(signal.SIGQUIT, hd.signal_close)
+    signal.signal(signal.SIGTERM, hd.signal_close)
+    #signal.signal(signal.SIGKILL, hd.signal_close) #We should let this kill the program instead of trying to handle it
+    signal.signal(signal.SIGHUP, hd.signal_hangup)
+    signal.signal(signal.SIGUSR1, hd.signal_info)
+    hd.start()
+    exit(0)

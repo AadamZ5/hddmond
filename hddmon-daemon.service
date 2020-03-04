@@ -3,7 +3,7 @@ Description=hddmon daemon that keeps track of attached hard drives.
 Requires=udev.service
 
 [Service]
-ExecStart=/usr/bin/python3 /etc/hddmon/hddmon-daemon.py
+ExecStart=/usr/bin/python3.8 /etc/hddmon/hddmond.py
 Restart=on-failure
 StandardOutput=file:/etc/hddmon/o.log
 StandardError=file:/etc/hddmon/e.log

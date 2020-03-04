@@ -60,9 +60,12 @@ class Test(Task):
         super(Test, self).__init__("Long test" if self.testType == Test.Long else ("Short test" if self.testType == Test.Short else "Test"))
         self._progressString = "Test"
         self._callback = callback
+        self._progress_cb = None
+        self._last_progress = self._progress
 
-    def start(self):
+    def start(self, progress_callback=None):
         if not self._started:
+            self._progress_cb = progress_callback
             self._testingThread.start()
             self._started = True
         else:
@@ -99,7 +102,7 @@ class Test(Task):
         '''
         Closes this test object without aborting the offline test.
         '''
-        self._testingThread._stop()
+        self._testing = False
         self._testingThread.join()
 
     def _processReturnCode(self, r, t):
@@ -135,8 +138,13 @@ class Test(Task):
         except Exception as e:
             pass
         self._progressString = "Testing " + str(self._progress) + "%"
-        if(self._progressCallback != None):
-            self._progressCallback(progress)
+        if self._progress != self._last_progress:
+            if(self._progressCallback != None) and callable(self._progressCallback):
+                self._progressCallback(progress)
+            if(self._progress_cb != None) and callable(self._progress_cb):
+                self._progress_cb(self._progress, self._progressString)
+            self._last_progress = self._progress
+        
 
             
             
