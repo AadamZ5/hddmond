@@ -1,4 +1,4 @@
-#!/usr/bin/python3.8
+#!./env/bin/python3.8
 from hddmondtools.hddmanager import ListModel
 from hddmondtools.websocket import WebsocketServer
 from hddmondtools.multiproc_socket import MultiprocSock

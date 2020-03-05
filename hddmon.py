@@ -1,4 +1,4 @@
-#!/usr/bin/python3.8
+#!./env/bin/python3.8
 import os, sys
 os.chdir('/etc/hddmon')
 print(os.getcwd())
@@ -14,7 +14,7 @@ import additional_urwid_widgets as ui_special
 import pySMART
 import time
 import threading
-from hddmond.hddmon_dataclasses import HddData, TaskData, TaskQueueData
+from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData
 from hddmontools.hdd import Hdd, HddViewModel, HealthStatus, TaskStatus
 from hddmontools.task import TaskQueue
 from hddmontools.pciaddress import PciAddress
