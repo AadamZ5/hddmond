@@ -1,1 +1,0 @@
-../../examples/tour.py

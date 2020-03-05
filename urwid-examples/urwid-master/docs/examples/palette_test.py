@@ -1,1 +1,0 @@
-../../examples/palette_test.py

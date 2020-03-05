@@ -1,3 +1,0 @@
-windowsize --usehints $RXVTWINDOWID 21 7
-type --window $RXVTWINDOWID 'Arthur, King of the Britons'
-key --window $RXVTWINDOWID Return
