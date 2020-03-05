@@ -3,8 +3,5 @@
 ./log
 *.log
 ./*.log
-./portdetector.log
-./__pycache__
+__pycache__
 .vscode
-hddmond/__pycache__
-hddmontools/__pycache__
