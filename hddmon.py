@@ -20,17 +20,17 @@ from hddmontools.task import TaskQueue
 from hddmontools.pciaddress import PciAddress
 from hddmontools.portdetection import PortDetection
 
-euid = os.geteuid()
-if euid != 0:
-    print("May I have root privledges? Without them 'htop' may not list disk usage correctly.")
-    inp = input("Please enter yes or no: ")
-    if ('y' in inp.strip().lower()):
-        args = ['sudo', sys.executable] + sys.argv + [os.environ]
-        # the next line replaces the currently-running process with the sudo
-        os.execlpe('sudo', *args)
-    else:
-        print("Not elevated.")
-        time.sleep(1.25)
+# euid = os.geteuid()
+# if euid != 0:
+#     print("May I have root privledges? Without them 'htop' may not list disk usage correctly.")
+#     inp = input("Please enter yes or no: ")
+#     if ('y' in inp.strip().lower()):
+#         args = ['sudo', sys.executable] + sys.argv + [os.environ]
+#         # the next line replaces the currently-running process with the sudo
+#         os.execlpe('sudo', *args)
+#     else:
+#         print("Not elevated.")
+#         time.sleep(1.25)
 
 
 

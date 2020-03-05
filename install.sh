@@ -8,7 +8,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 echo Trying to stop any existing service...
-systemctl stop hddmon-daemon
+systemctl stop hddmond
 
 LINK_DIR="/usr/bin/hddmon"
 SRC_DIR="/etc/hddmon"
@@ -31,10 +31,10 @@ cp ./hddmond.service /lib/systemd/system
 
 echo Reloading systemctl daemon list...
 systemctl daemon-reload
-echo Enabling hddmon-daemon service...
-systemctl enable hddmon-daemon
-echo Starting hddmon-daemon service...
-systemctl start hddmon-daemon
-sleep 1
-systemctl status hddmon-daemon
+echo Enabling hddmond service...
+systemctl enable hddmond
+echo Starting hddmond service...
+systemctl start hddmond
+sleep 2
+systemctl status hddmond
 echo All done!
