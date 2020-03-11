@@ -1,0 +1,22 @@
+additional-urwid-widgets==0.4.1
+astroid==2.3.3
+coloredlogs==14.0
+dataclasses==0.6
+executor==22.0
+fasteners==0.15
+graphqlclient==0.2.4
+humanfriendly==8.0
+jsonpickle==1.3
+lazy-object-proxy==1.4.3
+monotonic==1.5
+-e git+https://github.com/AadamZ5/python-proc.git@dev#egg=proc
+property-manager==3.0
+py-ts-interfaces==0.2.0
+-e git+https://github.com/AadamZ5/py-SMART.git@pickling-fixes#egg=pySMART
+pyudev==0.22.0
+sgqlc==10.1
+six==1.14.0
+urwid==2.1.0
+verboselogs==1.7
+websockets==8.1
+wrapt==1.11.2
