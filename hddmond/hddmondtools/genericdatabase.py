@@ -1,4 +1,4 @@
-from .hddmon_dataclasses import HddData, TaskData, AttributeData
+from .hddmon_dataclasses import HddData, TaskData, AttributeData, ImageData
 import sgqlc
 
 class GenericDatabase:
@@ -34,4 +34,7 @@ class GenericDatabase:
         pass
 
     def insert_attribute_capture(self, serial: str, attribute_capture):
+        pass
+
+    def set_image(self, image:ImageData):
         pass

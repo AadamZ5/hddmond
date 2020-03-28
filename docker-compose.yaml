@@ -1,14 +1,27 @@
 version: "3"
 
 services:
-    hddmond:
-        container_name: hddmond
-        image: python:3.8-slim
-        ports: 
-            - 8765:8765
+    # hddmond:
+    #     container_name: hddmond
+    #     image: python:3.8-slim
+    #     ports: 
+    #         - 8765:8765
+    #     restart: unless-stopped
+    #     volumes: 
+    #         - "./hddmond:/etc/hddmon/"
+    #     working_dir: "/etc/hddmon/"
+    #     entrypoint: "sh /etc/hddmon/docker_install.sh"
+    #     privileged: true
+    hddmond-images:
+        domainname: "localdomain"
+        hostname: "repairpc"
+        build: 
+            context: .
+            dockerfile: dockerfile 
+        container_name: hddmond-images
+        ports:
+            - 8084:8080
+            - 20201:20201 #sshfs for clonezilla
         restart: unless-stopped
         volumes: 
-            - "./hddmond:/etc/hddmon/"
-        working_dir: "/etc/hddmon/"
-        entrypoint: "sh /etc/hddmon/docker_install.sh"
-        privileged: true
+            - "/etc/hddmon/images:/usr/share/nginx/html"

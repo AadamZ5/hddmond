@@ -314,7 +314,7 @@ class ExternalTask(Task):
         self._progressString = "PID " + str(self.PID)
         self.notes.add("An external task was detected running on this storage device.\nCommand: " + str(" ".join(map(str, self._procview.cmdline))), note_taker="hddmond")
         if(start):
-            self._pollingThread.start()
+            self.start()
         
     def start(self, progress_callback=None):
         if(self._pollingThread.isAlive):
@@ -348,7 +348,10 @@ class ExternalTask(Task):
         Should be used only when quitting the hddmon-daemon program
         '''
         self._poll = False
-        self._pollingThread.join()
+        try:
+            self._pollingThread.join()
+        except RuntimeError:
+            pass
         self.notes.add("The process was detatched from the hddmond monitor.", note_taker="hddmond")
     
 

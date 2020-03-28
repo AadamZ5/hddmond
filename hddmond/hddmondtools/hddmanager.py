@@ -18,7 +18,7 @@ import signal
 from socket import timeout
 from .websocket import WebsocketServer
 from .multiproc_socket import MultiprocSock
-from .hddmon_dataclasses import HddData, TaskQueueData, TaskData
+from .hddmon_dataclasses import HddData, TaskQueueData, TaskData, ImageData
 from .genericdatabase import GenericDatabase
 
 class ListModel:
@@ -222,7 +222,10 @@ class ListModel:
         return True
 
     def sendImages(self, *args, **kwargs):
-        return {'images': self.images}
+        imgs = []
+        for i in self.images:
+            imgs.append(ImageData.FromDiskImage(i))
+        return {'images': imgs}
 
     def imageBySerial(self, *args, **kw): #applies an image on the drives matching the input serials
         l = threading.Lock()
@@ -464,29 +467,12 @@ class ListModel:
         #print("No process found for " + str(name) + ".")
         return None
 
-    def loadDiskImages(self):
-        print("Loading disk images")
-        if not os.path.exists('/home/partimag/'):
-            print("No images found.")
-            return
-        directories = os.listdir('/home/partimag/')
-        for name in directories:
-            directory = os.path.join('/home/partimag',name)
-            print("Found " + directory)
-            if(os.path.isdir(directory)):
-                try:
-                    i = DiskImage(name, directory)
-                    self.images.append(i)
-                except Exception as e:
-                    print("Error adding image at " + directory + ":\n" + str(e))
-
     def start(self):
         self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
         self.observer.start()
         self._loopgo = True
 
         self.updateDevices()
-        self.loadDiskImages()
         print("Done initializing.")
         self.updateLoop()
 
@@ -529,7 +515,6 @@ class ListModel:
         self.hdds.clear()
         self.images.clear()
         self.updateDevices()
-        self.loadDiskImages()
         self.start()
 
 if __name__ == '__main__':

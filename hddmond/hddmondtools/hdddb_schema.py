@@ -25,8 +25,8 @@ String = sgqlc.types.String
 ########################################################################
 class AttributeInput(sgqlc.types.Input):
     __schema__ = hdddb_schema
-    __field_names__ = ('number', 'name', 'value', 'flags', 'worst', 'threshold', 'type', 'updated', 'when_failed', 'raw')
-    number = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='number')
+    __field_names__ = ('index', 'name', 'value', 'flags', 'worst', 'threshold', 'type', 'updated', 'when_failed', 'raw')
+    index = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='index')
     name = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='name')
     value = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='value')
     flags = sgqlc.types.Field(Int, graphql_name='flags')
@@ -36,6 +36,13 @@ class AttributeInput(sgqlc.types.Input):
     updated = sgqlc.types.Field(String, graphql_name='updated')
     when_failed = sgqlc.types.Field(String, graphql_name='when_failed')
     raw = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='raw')
+
+
+class ChecksumInput(sgqlc.types.Input):
+    __schema__ = hdddb_schema
+    __field_names__ = ('path', 'checksum')
+    path = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='path')
+    checksum = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='checksum')
 
 
 class HddInput(sgqlc.types.Input):
@@ -53,6 +60,17 @@ class HddInput(sgqlc.types.Input):
     notes = sgqlc.types.Field(sgqlc.types.list_of('NoteInput'), graphql_name='notes')
 
 
+class ImageInput(sgqlc.types.Input):
+    __schema__ = hdddb_schema
+    __field_names__ = ('partitions', 'customer', 'image_name', 'version', 'path_on_server', 'notes')
+    partitions = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of('PartitionInput')), graphql_name='partitions')
+    customer = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='customer')
+    image_name = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='image_name')
+    version = sgqlc.types.Field(String, graphql_name='version')
+    path_on_server = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='path_on_server')
+    notes = sgqlc.types.Field(sgqlc.types.list_of('NoteInput'), graphql_name='notes')
+
+
 class NoteInput(sgqlc.types.Input):
     __schema__ = hdddb_schema
     __field_names__ = ('timestamp', 'note', 'note_taker', 'tags')
@@ -62,10 +80,23 @@ class NoteInput(sgqlc.types.Input):
     tags = sgqlc.types.Field(sgqlc.types.list_of(String), graphql_name='tags')
 
 
+class PartitionInput(sgqlc.types.Input):
+    __schema__ = hdddb_schema
+    __field_names__ = ('index', 'filesystem', 'partition_type', 'flags', 'start_sector', 'end_sector', 'md5_sums')
+    index = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='index')
+    filesystem = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='filesystem')
+    partition_type = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='partition_type')
+    flags = sgqlc.types.Field(sgqlc.types.list_of(String), graphql_name='flags')
+    start_sector = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='start_sector')
+    end_sector = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='end_sector')
+    md5_sums = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of(ChecksumInput)), graphql_name='md5_sums')
+
+
 class SmartCaptureInput(sgqlc.types.Input):
     __schema__ = hdddb_schema
-    __field_names__ = ('date', 'firmware', 'attributes')
+    __field_names__ = ('date', 'assessment', 'firmware', 'attributes')
     date = sgqlc.types.Field(String, graphql_name='date')
+    assessment = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='assessment')
     firmware = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='firmware')
     attributes = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of(AttributeInput)), graphql_name='attributes')
 
@@ -93,8 +124,8 @@ class TestInput(sgqlc.types.Input):
 ########################################################################
 class Attribute(sgqlc.types.Type):
     __schema__ = hdddb_schema
-    __field_names__ = ('number', 'name', 'value', 'flags', 'worst', 'threshold', 'type', 'updated', 'when_failed', 'raw')
-    number = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='number')
+    __field_names__ = ('index', 'name', 'value', 'flags', 'worst', 'threshold', 'type', 'updated', 'when_failed', 'raw')
+    index = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='index')
     name = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='name')
     value = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='value')
     flags = sgqlc.types.Field(Int, graphql_name='flags')
@@ -104,6 +135,21 @@ class Attribute(sgqlc.types.Type):
     updated = sgqlc.types.Field(String, graphql_name='updated')
     when_failed = sgqlc.types.Field(String, graphql_name='when_failed')
     raw = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='raw')
+
+
+class Checksum(sgqlc.types.Type):
+    __schema__ = hdddb_schema
+    __field_names__ = ('path', 'checksum')
+    path = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='path')
+    checksum = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='checksum')
+
+
+class Customer(sgqlc.types.Type):
+    __schema__ = hdddb_schema
+    __field_names__ = ('name', 'images', 'notes')
+    name = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='name')
+    images = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of('Image')), graphql_name='images')
+    notes = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of('Note')), graphql_name='notes')
 
 
 class Hdd(sgqlc.types.Type):
@@ -124,9 +170,20 @@ class Hdd(sgqlc.types.Type):
     notes = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of('Note')), graphql_name='notes')
 
 
+class Image(sgqlc.types.Type):
+    __schema__ = hdddb_schema
+    __field_names__ = ('partitions', 'customer', 'image_name', 'version', 'path_on_server', 'notes')
+    partitions = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of('Partition')), graphql_name='partitions')
+    customer = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='customer')
+    image_name = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='image_name')
+    version = sgqlc.types.Field(String, graphql_name='version')
+    path_on_server = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='path_on_server')
+    notes = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of('Note')), graphql_name='notes')
+
+
 class Mutation(sgqlc.types.Type):
     __schema__ = hdddb_schema
-    __field_names__ = ('see_hdd', 'set_hdd', 'add_smart_capture', 'add_test', 'add_task', 'decommission')
+    __field_names__ = ('see_hdd', 'set_hdd', 'add_smart_capture', 'add_test', 'add_task', 'decommission', 'set_image')
     see_hdd = sgqlc.types.Field(sgqlc.types.non_null(Hdd), graphql_name='seeHdd', args=sgqlc.types.ArgDict((
         ('serial', sgqlc.types.Arg(sgqlc.types.non_null(String), graphql_name='serial', default=None)),
 ))
@@ -155,6 +212,10 @@ class Mutation(sgqlc.types.Type):
         ('decommission', sgqlc.types.Arg(Boolean, graphql_name='decommission', default=None)),
 ))
     )
+    set_image = sgqlc.types.Field(sgqlc.types.non_null(Image), graphql_name='setImage', args=sgqlc.types.ArgDict((
+        ('image', sgqlc.types.Arg(sgqlc.types.non_null(ImageInput), graphql_name='image', default=None)),
+))
+    )
 
 
 class Note(sgqlc.types.Type):
@@ -164,6 +225,18 @@ class Note(sgqlc.types.Type):
     note = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='note')
     note_taker = sgqlc.types.Field(String, graphql_name='note_taker')
     tags = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of(String)), graphql_name='tags')
+
+
+class Partition(sgqlc.types.Type):
+    __schema__ = hdddb_schema
+    __field_names__ = ('index', 'filesystem', 'partition_type', 'flags', 'start_sector', 'end_sector', 'md5_sums')
+    index = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='index')
+    filesystem = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='filesystem')
+    partition_type = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='partition_type')
+    flags = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of(String)), graphql_name='flags')
+    start_sector = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='start_sector')
+    end_sector = sgqlc.types.Field(sgqlc.types.non_null(Int), graphql_name='end_sector')
+    md5_sums = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of(Checksum)), graphql_name='md5_sums')
 
 
 class Query(sgqlc.types.Type):
@@ -187,8 +260,9 @@ class Query(sgqlc.types.Type):
 
 class SmartCapture(sgqlc.types.Type):
     __schema__ = hdddb_schema
-    __field_names__ = ('hdd', 'date', 'firmware', 'attributes')
+    __field_names__ = ('hdd', 'assessment', 'date', 'firmware', 'attributes')
     hdd = sgqlc.types.Field(sgqlc.types.non_null(Hdd), graphql_name='hdd')
+    assessment = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='assessment')
     date = sgqlc.types.Field(sgqlc.types.non_null(DateTime), graphql_name='date')
     firmware = sgqlc.types.Field(sgqlc.types.non_null(String), graphql_name='firmware')
     attributes = sgqlc.types.Field(sgqlc.types.non_null(sgqlc.types.list_of(Attribute)), graphql_name='attributes')

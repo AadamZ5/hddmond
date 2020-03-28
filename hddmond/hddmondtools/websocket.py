@@ -62,13 +62,22 @@ class WebsocketServer(GenericServer):
                 print("Error decoding message from " + str(ws.remote_address) + ". Message: " + str(message))
                 send = jsonpickle.dumps({"error": "Couldn't parse JSON data!"}, unpicklable=False, make_refs=False)
                 await ws.send(send)
-            command = m.get('command', None)
-            data = m.get('data', dict())
+            
+            if(m != None):
+                command = m.get('command', None)
+                data = m.get('data', dict())
 
-            if command != None:
-                r = self.find_action(str(command), **data)
-                r_json = jsonpickle.dumps(r, unpicklable=False, make_refs=False)
-                await ws.send(r_json)
+                if command != None:
+                    r = self.find_action(str(command), **data)
+                    r_json = jsonpickle.dumps(r, unpicklable=False, make_refs=False)
+                    await ws.send(r_json)
+                else:
+                    send = jsonpickle.dumps({"error": "No command to process!"}, unpicklable=False, make_refs=False)
+                    await ws.send(send)
+
+            else:
+                send = jsonpickle.dumps({"error": "No data to parse!"}, unpicklable=False, make_refs=False)
+                await ws.send(send)
 
         await self.unregister(ws.remote_address)
         

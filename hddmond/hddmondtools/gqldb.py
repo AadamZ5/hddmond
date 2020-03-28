@@ -1,6 +1,6 @@
-from .hddmon_dataclasses import TaskData, HddData, TaskQueueData
+from .hddmon_dataclasses import TaskData, HddData, TaskQueueData, ImageData
 from .genericdatabase import GenericDatabase
-from .hdddb_schema import SmartCaptureInput, AttributeInput, HddInput, TaskInput, Query, Mutation, NoteInput
+from .hdddb_schema import SmartCaptureInput, AttributeInput, HddInput, TaskInput, Query, Mutation, NoteInput, ImageInput, PartitionInput, ChecksumInput
 from sgqlc.operation import Operation
 from sgqlc.endpoint.http import HTTPEndpoint
 import datetime
@@ -64,7 +64,6 @@ class GraphQlDatabase(GenericDatabase):
         
         return new_seen_count
 
-
     def add_task(self, serial:str, task:TaskData):
         mutation = Operation(Mutation)
 
@@ -88,7 +87,7 @@ class GraphQlDatabase(GenericDatabase):
             self.connection(mutation)
             print("Added task " + str(task.name) + " to " + str(serial) + " in database")
         except:
-            print("Error while updatng database for task " + str(task.name) + " on " + str(serial))
+            print("Error while updating database for task " + str(task.name) + " on " + str(serial))
 
     def decommission(self, serial:str, decommissioned=True):
         mutation = Operation(Mutation)
@@ -102,3 +101,40 @@ class GraphQlDatabase(GenericDatabase):
 
     def insert_attribute_capture(self, serial: str, attribute_capture):
         pass
+
+    def set_image(self, image:ImageData):
+        mutation = Operation(Mutation)
+
+        parts = []
+        for p in image.partitions:
+            sums = []
+            for s in p.md5_sums:
+                gs = ChecksumInput()
+                gs.checksum = s.md5_sum
+                gs.path = s.root_path
+                sums.append(gs)
+            gp = PartitionInput()
+            gp.index = p.index
+            gp.filesystem = p.filesystem
+            gp.start_sector = p.start_sector
+            gp.end_sector = p.end_sector
+            gp.flags = p.flags
+            gp.md5_sums = sums
+            gp.partition_type = p.part_type
+            parts.append(gp)
+            
+
+        imageg = ImageInput()
+        imageg.image_name = image.name
+        imageg.notes = []
+        imageg.path_on_server = image.path
+        imageg.customer = "DNP" #This needs variable
+        imageg.version = "??" #This needs variable
+        imageg.partitions = parts
+        r = mutation.set_image(image=imageg)
+        r.image_name()
+        try:
+            self.connection(mutation)
+            print("Added image " + str(image.name) + " to database")
+        except:
+            print("Error while updating database for image " + str(image.name))

@@ -4,6 +4,44 @@ from typing import List, Tuple
 import datetime
 
 @dataclass
+class Md5SumData(Interface):
+    root_path: str
+    md5_sum: str
+
+@dataclass
+class PartitionData(Interface):
+    index: int
+    start_sector: int
+    end_sector: int
+    filesystem: str
+    part_type: str
+    flags: List[str]
+    #md5_sums: List[Md5SumData]
+
+    @staticmethod
+    def FromPartition(p):
+        # sums = []
+        # for s in p.md5sums.keys():
+        #     md5sum = Md5SumData(s, p.md5sums[s])
+        #     sums.append(md5sum)
+        
+        return PartitionData(p.index, p.startSector, p.endSector, p.filesystem, p.parttype, p.flags)
+
+@dataclass
+class ImageData(Interface):
+    name: str
+    part_table: str
+    partitions: List[PartitionData]
+    path: str
+
+    @staticmethod
+    def FromDiskImage(d):
+        parts = []
+        for p in d.partitions:
+            parts.append(PartitionData.FromPartition(p))
+        return ImageData(d.name, d.parttable, parts, d.path)
+
+@dataclass
 class NoteData(Interface):
     tags: List[str]
     note: str
@@ -71,7 +109,7 @@ class TaskData(Interface):
         notes = []
         for n in task.notes.entries:
             notes.append(NoteData.FromNote(n))
-        return TaskData(task.name, (task.Progress != -1), task.Progress, task.ProgressString, task.returncode, notes, task.time_started.isoformat(), task.time_ended.isoformat())
+        return TaskData(task.name, (task.Progress != -1), task.Progress, task.ProgressString, task.returncode, notes, (task.time_started.isoformat() if task.time_started != None else None), (task.time_ended.isoformat() if task.time_ended != None else None))
 
 @dataclass
 class TaskQueueData(Interface):

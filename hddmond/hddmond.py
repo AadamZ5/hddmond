@@ -2,13 +2,15 @@
 from hddmondtools.hddmanager import ListModel
 from hddmondtools.websocket import WebsocketServer
 from hddmondtools.multiproc_socket import MultiprocSock
-from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData
+from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData, ImageData
 import signal
 from hddmondtools.gqldb import GraphQlDatabase
+from hddmontools.image import ImageManager, CustomerImage, DiskImage
 
 
 class App:
     def __init__(self):
+        self.images = ImageManager()
         self.list = ListModel(taskChangedCallback = self.task_changed_cb, database=GraphQlDatabase("http://192.168.1.2:4000/graphql"))
         self.mps = MultiprocSock()
         self.ws = WebsocketServer()
@@ -29,7 +31,7 @@ class App:
         self.ws.register_command('shorttest', self.list.shortTestBySerial)
         self.ws.register_command('longtest', self.list.longTestBySerial)
         self.ws.register_command('aborttest', self.list.abortTestBySerial)
-        self.ws.register_command('getimages', self.list.sendImages)
+        self.ws.register_command('getimages', self.image_shim)
         self.ws.register_command('image', self.list.imageBySerial)
         self.ws.register_command('aborttask', self.list.abortTaskBySerial)
         self.ws.register_command('hdds', self.list.sendHdds)
@@ -41,6 +43,15 @@ class App:
     def ws_update(self, payload):
         self.ws.broadcast_data(payload)
 
+    def image_shim(self, *args, **kw):
+        imags = []
+        for i in self.images.added_images:
+            imags.append(ImageData.FromDiskImage(i))
+        disc = []
+        for i in self.images.discovered_images:
+            disc.append(ImageData.FromDiskImage(i))
+        return {'onboarded_images': imags, 'discovered_images': disc}
+
     def start(self):
         self.mps.start()
         self.ws.start()
@@ -51,6 +62,7 @@ class App:
         self.mps.stop()
         self.ws.stop()
         self.list.stop()
+        self.images.stop()
 
     def task_changed_cb(self, payload):
         self.mps.broadcast_data(payload)
