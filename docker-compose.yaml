@@ -13,15 +13,28 @@ services:
     #     entrypoint: "sh /etc/hddmon/docker_install.sh"
     #     privileged: true
     hddmond-images:
-        domainname: "localdomain"
-        hostname: "repairpc"
         build: 
             context: .
-            dockerfile: dockerfile 
+            dockerfile: images-dockerfile 
         container_name: hddmond-images
         ports:
-            - 8084:8080
-            - 20201:20201 #sshfs for clonezilla
+            - 84:80
         restart: unless-stopped
         volumes: 
-            - "/etc/hddmon/images:/usr/share/nginx/html"
+            - "/etc/hddmon/images/:/www/"
+    hddmond-sshfs:
+        build:
+            context: .
+            dockerfile: sshfs-dockerfile
+        container_name: hddmon-imagesfs
+        environment: 
+            - PUID=1000
+            - PGID=1000
+            - PASSWORD_ACCESS=true
+            - USER_PASSWORD=vel_images
+            - USER_NAME=imuser
+        ports:
+            - "20201:2222"
+        restart: unless-stopped
+        volumes: 
+            - "/etc/hddmon/images/:/images"

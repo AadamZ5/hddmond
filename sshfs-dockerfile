@@ -1,0 +1,3 @@
+FROM linuxserver/openssh-server:latest
+RUN apk update
+RUN apk add sshfs

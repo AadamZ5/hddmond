@@ -2,6 +2,7 @@ import os
 import gzip
 import threading
 import shutil
+import pickle
 
 class Partition:
     def __init__(self, index, startSector, endSector, filesystem, type_, flags=None):
@@ -141,10 +142,10 @@ class DiskImage:
                         #line might look like this:     
                         #c931e513a1e7a7692468ba95b9c621fc  /tmp/chksum_tmpd.DqNOIG/Drivers/kioskreport/MasterInfo.dll
 
-                        t = line.split()
+                        t = line.split() #  🔽------ERASE---------🔽
                         dir_ = str(t[1]) #  /tmp/chksum_tmpd.DqNOIG/Drivers/kioskreport/MasterInfo.dll
                         sum_ = str(t[0]) #  c931e513a1e7a7692468ba95b9c621fc
-
+                                                                                  #     😊
                         rootdir = re.sub('(\/tmp\/chksum_tmpd\.\w{6})', '', dir_) #  ------------/Drivers/kioskreport/MasterInfo.dll
                         p.md5sums.update({rootdir: sum_})
                 self._write_new_md5sums(p)
@@ -220,11 +221,13 @@ class ImageManager:
         self.discovered_images = [] #List of DiskImage
         self._adding_images = [] #List of (CopyManager, image) that are being added. 
         self.added_images = [] #List of CustomerImage
-        self._discover_locations = ['/home/partimag/']
+        self._discover_locations = ['/home/partimag/'] #Don't add a path equivalent to self._image_path here! It will add duplicate "discovered" images.
         self._stop = False
-        self._load_existing_images()
 
+    def start(self):
+        self._load_existing_images()
         for p in self._discover_locations:
+            print("Looking in {0}...".format(p))
             self.scan_for_images(p)
 
     def _put_on_server(self):
@@ -245,7 +248,9 @@ class ImageManager:
                         i = pickle.load(fd)
                         self.added_images.append(i)
                 except Exception as e:
-                    print("Error loading image at " + directory + ":\n" + str(e))
+                    print("Error unpickling image at " + directory + ":\n" + str(e))
+            else:
+                print("Couldn't load image! No pickle file found for {0}".format(directory))
 
     def scan_for_images(self, scan_folder):
         '''
@@ -267,14 +272,15 @@ class ImageManager:
     def _copy_image_thread(self, image: DiskImage, customer: str, copydone=None):
         print("Copying local image {0} in background...".format(image.name))
         self.discovered_images.remove(image)
-        #cp_manager = CopyManager()
-        #t = (cp_manager, image)
-        t = (None, image)
+        cp_manager = CopyManager()
+        t = (cp_manager, image)
+        #t = (None, image)
         self._adding_images.append(t)
         newpath = os.path.join(self._image_path, image.name)
         print(newpath)
         try:
-            os.symlink(image.path, newpath, target_is_directory=os.path.isdir(image.path))
+            cp_manager.copy(image.path, newpath)
+            #os.symlink(image.path, newpath, target_is_directory=os.path.isdir(image.path))
         except Exception as e:
             print("Failed copying {0}:".format(image.name))
             print(str(e))
@@ -287,6 +293,8 @@ class ImageManager:
         
     def _copy_image_done(self, image: CustomerImage):
         self.added_images.append(image)
+        with open(os.path.join(image.path, 'hddmond-data.dat'), 'wb') as fd:
+            pickle.dump(image, fd)
         print("Done adding " + str(image.name))
 
     def _copy_image(self, image: DiskImage, customer: str):

@@ -53,6 +53,7 @@ class App:
         return {'onboarded_images': imags, 'discovered_images': disc}
 
     def start(self):
+        self.images.start()
         self.mps.start()
         self.ws.start()
         self.list.start()

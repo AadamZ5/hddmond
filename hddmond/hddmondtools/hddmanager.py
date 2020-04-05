@@ -149,6 +149,9 @@ class ListModel:
             for h in self.hdds:
                 if (h.serial == serial):
                     return {'hdd': HddData.FromHdd(h)}
+            #This runs if the return statement doesn't execute
+            return {'error': 'No hdd found with serial {0}'.format(serial)}
+
         else:
             hdddata = []
             for h in self.hdds:
