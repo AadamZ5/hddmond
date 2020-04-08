@@ -6,6 +6,13 @@ from sgqlc.endpoint.http import HTTPEndpoint
 import datetime
 import threading
 
+# 
+# This was an implimentation to get the daemon to talk to the database through graphql, but it is no longer being maintained. 
+# GraphQL is the nicest when it's used as a front-end query language. While it would be acceptable to use it for this daemon, 
+# it isn't the most practical in this case. This option was deserted for a pure couchdb implimentation where the daemon directly 
+# communicates with couchdb. This avoids all the unessescesaryuwuad abstraction and implimentation for GraphQL.
+#
+
 class GraphQlDatabase(GenericDatabase):
     def __init__(self, url, header_dict=None):
         self.url = url
@@ -99,8 +106,38 @@ class GraphQlDatabase(GenericDatabase):
             print("Error while decommissioniing " + str(serial))
         pass
 
-    def insert_attribute_capture(self, serial: str, attribute_capture):
-        pass
+    def insert_attribute_capture(self, hdd:HddData):
+        mutation = Operation(Mutation)
+
+
+        attr_input = []
+        for a in hdd.smart.attributes:
+            gatt = AttributeInput()
+            gatt.index = a.index
+            gatt.name = a.name
+            gatt.value = a.value
+            gatt.flags = a.flags
+            gatt.worst = a.worst
+            gatt.threshold = a.threshold
+            gatt.type = a.attr_type
+            gatt.updated = a.updated_freq
+            gatt.when_failed = a.when_failed
+            gatt.raw = a.raw_value
+            attr_input.append(gatt)
+
+        smart = SmartCaptureInput()
+        smart.date = datetime.datetime.now().isoformat()
+        smart.assessment = hdd.smart.assessment
+        smart.firmware = hdd.smart.firmware
+        smart.attributes = attr_input
+
+        r = mutation.add_smart_capture(serial=hdd.serial, smartCapture=smart)
+        r.assessment()
+        try:
+            self.connection(mutation)
+            print("Added smart capture for " + str(hdd.serial) + " in database")
+        except Exception as e:
+            print("Error adding smart capture " + str(hdd.serial) + " in database:\n" + str(e))
 
     def set_image(self, image:ImageData):
         mutation = Operation(Mutation)

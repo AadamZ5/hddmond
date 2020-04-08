@@ -10,13 +10,10 @@ from .task import EraseTask, ImageTask, TaskQueue
 from .notes import Notes
 import proc.core
 
-debug = False
-def logwrite(s:str, endl='\n'):
-    if debug:
-        fd = open("./hdds.log", 'a')
-        fd.write(s)
-        fd.write(endl)
-        fd.close()
+
+#
+#   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  
+#
 
 class HealthStatus(enum.Enum):
     Failing = 0,
@@ -52,7 +49,7 @@ class Hdd:
         # all our instance attributes. Always use the dict.copy()
         # method to avoid modifying the original state.
         state = self.__dict__.copy()
-        # Remove the unpicklable entries. Udev references CDLL which won't pickle.
+        # Remove the unpicklable entries. Udev referres to CDLL which won't pickle.
         state['_udev'] = None
         state['_task_changed_callbacks'] = None
         return state
@@ -266,10 +263,9 @@ class Hdd:
 
     def UpdateSmart(self):
         self._smart.update()
-        #print(self._smart._test_running)
-                
-    def refresh(self):
-        pass
+
+    def capture_attributes(self):
+        return self._smart.attributes.copy()
             
     def __str__(self):
         if(self.serial):
@@ -284,26 +280,3 @@ class Hdd:
             t = "HDD"
         s = t + " " + str(self.serial) + " at " + str(self.node)
         return "<" + s + ">"
-
-class HddViewModel:
-    def __init__(self, serial=None, node=None, taskQueueSize=0, pciAddress=None, status=None, taskStatus=None, taskString=None, testProgress=None, port=None, size=None, isSsd=None, smartResult=None):
-        self.serial=serial
-        self.node=node
-        self.pciAddress=pciAddress
-        self.status=status
-        self.taskStatus=taskStatus
-        self.taskString=taskString
-        self.testProgress=testProgress
-        self.port=port
-        self.size=size
-        self.isSsd=isSsd
-        self.smartResult=smartResult
-        self.taskQueueSize = taskQueueSize
-
-    @staticmethod
-    def FromHdd(h: Hdd):
-        logwrite(str(h))
-        hvm = HddViewModel(serial=h.serial, node=h.node, pciAddress=h.OnPciAddress, status=h.status, testProgress=h.GetTestProgressString(), taskStatus=h.CurrentTaskStatus, taskString=h.GetTaskProgressString(), port=h.port, size=h.Size, isSsd=h._smart.is_ssd, taskQueueSize=len(h.TaskQueue.Queue))
-        hvm.smartResult = h._smart.__dict__.get('assessment', h._smart.__dict__.get('smart_status', None)) #Pickling mixup https://github.com/freenas/py-SMART/issues/23
-        logwrite("\t" + str(hvm.status))
-        return hvm

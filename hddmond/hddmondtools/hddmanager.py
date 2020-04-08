@@ -70,12 +70,12 @@ class ListModel:
         data.update({'serial': hdd.serial})
 
         if(action == "taskfinished"):
-            self.database_task_finished(hdd.serial, Tqd)
+            self.database_task_finished(hdd, Tqd)
 
         if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
             self.task_change_outside_callback({'update': action, 'data': {'serial': hdd.serial, 'taskqueue': Tqd}})
 
-    def database_task_finished(self, serial:str, task_queue_data: TaskQueueData):
+    def database_task_finished(self, hdd:Hdd, task_queue_data: TaskQueueData):
         if self.database == None:
             return
 
@@ -84,7 +84,10 @@ class ListModel:
 
         t = task_queue_data.completed[0]
 
-        self.database.add_task(serial, t)
+        self.database.add_task(hdd.serial, t)
+        if 'test' in t.name.lower():
+            pass
+            #self.database.insert_attribute_capture(HddData.FromHdd(hdd))
 
     def update_blacklist_file(self):
         import json
@@ -377,7 +380,6 @@ class ListModel:
                     if(task != None):
                         hdd.TaskQueue.AddTask(ExternalTask(task.pid, processExitCallback=hdd._taskCompletedCallback))
                         hdd.CurrentTaskStatus = TaskStatus.External
-                hdd.refresh()
             self.stuffRunning = busy
             time.sleep(1)
 
@@ -419,7 +421,6 @@ class ListModel:
         if(t != None):
             hdd.TaskQueue.AddTask(ExternalTask(t.pid, processExitCallback=hdd._taskCompletedCallback))
             hdd.CurrentTaskStatus = TaskStatus.External
-        hdd.refresh()
         self.hdds.append(hdd)
         if(self.AutoShortTest == True) and (hdd.status != HealthStatus.ShortTesting and hdd.status != HealthStatus.LongTesting):
             hdd.ShortTest()

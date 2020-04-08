@@ -37,4 +37,14 @@ services:
             - "20201:2222"
         restart: unless-stopped
         volumes: 
-            - "/etc/hddmon/images/:/images"
+            - "/etc/hddmon/images/:/images:ro"
+    hddmond-sftp:
+        image: atmoz/sftp:alpine
+        container_name: hddmond-upload
+        ports:
+            - "20202:22"
+        restart: unless-stopped
+        volumes:
+            - "/etc/hddmon/images_new/:/home/images_new"
+            - "/etc/hddmon/images/:/images:ro"
+            - "/etc/hddmon/images_data/:/etc/sftp/:ro"

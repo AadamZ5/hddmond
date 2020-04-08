@@ -1,0 +1,25 @@
+Metadata-Version: 2.1
+Name: cloudant
+Version: 2.12.0
+Summary: Cloudant / CouchDB Client Library
+Home-page: https://github.com/cloudant/python-cloudant
+Author: IBM
+Author-email: alfinkel@us.ibm.com
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: Intended Audience :: Developers
+Classifier: Natural Language :: English
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.5
+Provides: cloudant
+Requires-Dist: requests (<3.0.0,>=2.7.0)
+
+UNKNOWN
+
+

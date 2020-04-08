@@ -3,6 +3,9 @@ import gzip
 import threading
 import shutil
 import pickle
+import secrets
+import datetime
+import subprocess
 
 class Partition:
     def __init__(self, index, startSector, endSector, filesystem, type_, flags=None):
@@ -215,14 +218,27 @@ class CopyManager:
     def stop(self):
         self._stop = True
         
+class ImageUpload:
+    def __init__(self, endpoint, ftp_user, expire_in:datetime.timedelta):
+        self.endpoint = str(endpoint)
+        self.user = ftp_user
+        self.expire_datetime = datetime.datetime.now() + expire_in
+
+    def reset_expire_time(self, expire_in:datetime.timedelta = datetime.timedelta(seconds=30)):
+        self.expire_datetime = datetime.datetime.now() + expire_in
+
 class ImageManager:
     def __init__(self):
         self._image_path = r'/etc/hddmon/images/' #Onboarded images go here.
+        self._image_credentials = r'/etc/hddmon/images_data/users.conf'
         self.discovered_images = [] #List of DiskImage
-        self._adding_images = [] #List of (CopyManager, image) that are being added. 
+        self._adding_images = [] #List of (CopyManager || None,  DiskImage || string) that are being added. 
+        self._image_uploads = [] #List of ImageUpload
         self.added_images = [] #List of CustomerImage
         self._discover_locations = ['/home/partimag/'] #Don't add a path equivalent to self._image_path here! It will add duplicate "discovered" images.
+        self.credential_expire_thread = None
         self._stop = False
+        self.docker_name = "hddmond-upload"
 
     def start(self):
         self._load_existing_images()
@@ -316,8 +332,143 @@ class ImageManager:
         for manager, image in self._adding_images:
             if manager != None:
                 manager.stop()
-                
-                
+
+        remove_list = []
+        for iu in self._image_uploads:
+            self._remove_upload_credentials(iu.user,self.docker_name)
+            remove_list.append(iu)
+
+        for o in remove_list:
+                for i in range(len(self._image_uploads)):
+                    if o == self._image_uploads[i]:
+                        del self._image_uploads[i]
+                        break
+
+    def _make_credential_watch_thread(self):
+        self.credential_expire_thread = threading.Thread(name="credential_watch_thread", target=self._watch_credential_expire)
+        self.credential_expire_thread.start()
+
+    def _watch_credential_expire(self, *args, **kwargs):
+        import time
+        while len(self._image_uploads) > 0 and not self._stop:
+            remove_list = []
+
+            for iu in self._image_uploads:
+                if iu.expire_datetime < datetime.datetime.now():
+                    self._remove_upload_credentials(iu.user,self.docker_name)
+                    remove_list.append(iu)
+
+            for o in remove_list:
+                for i in range(len(self._image_uploads)):
+                    if o == self._image_uploads[i]:
+                        del self._image_uploads[i]
+                        break
+            
+            time.sleep(1)
+            
+    
+    def _get_upload_credentials(self, endpoint): 
+        '''
+        Generates credentials for the sftp server so a client can connect.
+        '''
+        user = secrets.token_hex(8)
+        if(user[0] == '-'):
+            user[0] = '_'  #First character of username on UNIX shouldn't be hyphen https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap03.html#tag_03_437
+        if not (user[0].isalpha()) or (user[0].isupper()): #And it must be lowercase alphabetical for useradd... I guess...
+            import string
+            first = secrets.choice(string.ascii_lowercase)
+            user = first + user[1:] #Python strings can't have each character manipulated, so we have to reassign the whole string...
+
+        passw = secrets.token_urlsafe(64)
+        return user,passw
+
+    def _remove_upload_credentials(self, user:str, docker_name:str):
+        '''
+        Removes upload credentials from docker
+        '''
+        op = subprocess.run(["docker", "exec", docker_name, "deluser", "--remove-home", user], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if op.returncode != 0:
+            print("Error while removing user {0} credentials.")
+            print("stdout: " + op.stdout)
+            print("stderr: " + op.stderr)
+            return False
+
+        return True
+
+    def _check_docker_status(self, docker_name:str):
+        '''
+        Checks to see if the docker container with name docker_name is running.
+        Returns True or False.
+        '''
+        docker_list = subprocess.run(["docker", "ps", "-a", "--format", r"{{.ID}}:{{.Names}}:{{.Status}}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        lines = docker_list.stdout.splitlines()
+        t_list = [] #list of (docker_id, docker_name, docker_status)
+        for i in lines:
+            split = i.split(":")
+            docker_id = split[0]
+            docker_name = split[1]
+            d_stat = split[2]
+            if 'up' in d_stat.lower():
+                docker_status = 'up'
+            else:
+                docker_status = 'down'
+            t_list.append((docker_id, docker_name, docker_status))
+
+        for t in t_list:
+            if docker_name in t:
+                return t[2].lower() == 'up'
+            
+        return False #No docker found
+        
+    def _add_upload_credentials(self, user:str, passw:str, docker_name:str):
+        '''
+        Adds the user and pass to the docker container
+        '''
+
+        op = subprocess.run(["docker", "exec", docker_name, "/usr/local/bin/create-sftp-user", "{0}:{1}:1000:1000:upload".format(user,passw,)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if op.returncode != 0:
+            print("Error adding user")
+            print("stdout: " + op.stdout)
+            print("stderr: " + op.stderr)
+            return False
+
+        return True
+
+    def create_upload_session(self, *args, **kwargs):
+        '''
+        Creates an upload session for a client communicating over websocket.
+        This makes and returns user and passw info.
+        Credentials timeout in seconds.
+        '''
+
+        endpoint = kwargs.get('endpoint',None)
+        expire_in=300
+
+        d_cont = self.docker_name
+        if not self._check_docker_status(d_cont):
+            print("{0} container is not running! Unable to let clients upload files!".format(d_cont))
+            return {"error": "Required services are not present"}
+
+        usr = ""
+        pwd = ""
+        try:
+            usr,pwd = self._get_upload_credentials(endpoint)
+        except IOError:
+            return {"error": "Could not generate credentials"}
+        else:
+            if self._add_upload_credentials(usr,pwd,d_cont):
+                u = ImageUpload(endpoint, usr, datetime.timedelta(seconds=expire_in))
+                self._image_uploads.append(u)
+            else:
+                print("Error while adding credentials!")
+                return {"error": "Could not generate credentials"}
+
+            if(len(self._image_uploads) == 1):
+                self._make_credential_watch_thread()
+        
+        return {"user": usr, "password": pwd}
+
+    
 
 
             

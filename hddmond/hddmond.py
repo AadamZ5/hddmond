@@ -5,13 +5,14 @@ from hddmondtools.multiproc_socket import MultiprocSock
 from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData, ImageData
 import signal
 from hddmondtools.gqldb import GraphQlDatabase
+from hddmondtools.couchdb import CouchDatabase
 from hddmontools.image import ImageManager, CustomerImage, DiskImage
 
 
 class App:
     def __init__(self):
         self.images = ImageManager()
-        self.list = ListModel(taskChangedCallback = self.task_changed_cb, database=GraphQlDatabase("http://192.168.1.2:4000/graphql"))
+        self.list = ListModel(taskChangedCallback = self.task_changed_cb, database=CouchDatabase("http://192.168.1.2:5984", "vuser", "Velocity_2017!"))
         self.mps = MultiprocSock()
         self.ws = WebsocketServer()
 
@@ -39,6 +40,8 @@ class App:
         self.ws.register_command('pausequeue', self.list.pauseQueue)
         self.ws.register_command('blacklist', self.list.blacklist)
         self.ws.register_command('blacklisted', self.list.sendBlacklist)
+        self.ws.register_command('upload_image', self.images.create_upload_session)
+        self.ws.register_command('upload_image_done', None)
 
     def ws_update(self, payload):
         self.ws.broadcast_data(payload)

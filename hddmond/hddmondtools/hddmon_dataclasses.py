@@ -2,6 +2,23 @@ from dataclasses import dataclass
 from py_ts_interfaces import Interface
 from typing import List, Tuple
 import datetime
+#
+#   The purpose of this file is to hold data classes that correspond to typescript interface definitions on the web app thing.
+#   Basically this is all a translation layer to make sure data is neatly and properly laid out for Angular.
+#   All of these classes are designed to be easily translatable into JSON and also typescript interfaces.
+#   See: https://github.com/cs-cordero/py-ts-interfaces
+#
+#   While this might seem redundant, it actually allows for greater flexibility on the backend and helps us weed out which data
+#   to send to the front end. Our front end will not need hdd.syspath or hdd.pciaddress. Or in the case of the TaskQueue class,
+#   Our front end will not need the TaskQueue._queue_thread or TaskQueue._task_change_callback variables. Trying to build in
+#   serialization with pure back-end classes would be tedious, tiresome, and hinder flexibility in my opinion. Thats why I opted
+#   to go with this translation layer instead.
+#
+#   Side note: The classes marked with @dataclass have their constructors auto-generated. The constructors just accept the
+#   variables defined below the class in order of definition.
+#
+#   Side note: The inheritance from the Interface class allows py-ts-interfaces to automagically convert these to typescript interfaces.
+#
 
 @dataclass
 class Md5SumData(Interface):
@@ -20,7 +37,7 @@ class PartitionData(Interface):
 
     @staticmethod
     def FromPartition(p):
-        # sums = []
+        # sums = []     #This takes too long and is too much data to send! This will kill your websocket.
         # for s in p.md5sums.keys():
         #     md5sum = Md5SumData(s, p.md5sums[s])
         #     sums.append(md5sum)
@@ -122,8 +139,8 @@ class TaskQueueData(Interface):
     @staticmethod
     def FromTaskQueue(taskqueue):
         taskdatas = []
-        for t in taskqueue.Queue:
-            task = t[1] #(preexec_cb, task, finish_cb)
+        for t in taskqueue.Queue: #t is a tuple of (preexec_cb, task, finish_cb)
+            task = t[1]
             taskdatas.append(TaskData.FromTask(task))
         historytaskdatas = []
         for t in taskqueue.history:
