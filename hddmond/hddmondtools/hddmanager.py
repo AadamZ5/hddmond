@@ -86,8 +86,8 @@ class ListModel:
 
         self.database.add_task(hdd.serial, t)
         if 'test' in t.name.lower():
-            pass
-            #self.database.insert_attribute_capture(HddData.FromHdd(hdd))
+            self.database.insert_attribute_capture(HddData.FromHdd(hdd))
+            print("Captured SMART data into database from {0}".format(hdd.serial))
 
     def update_blacklist_file(self):
         import json
@@ -175,7 +175,7 @@ class ListModel:
                 if h.serial == s:
                     r = h.Erase()
                     if r == True:
-                        print("Started erase on " + str(h.serial))
+                        print("Queued erase on " + str(h.serial))
                     else:
                         print("Couldn't start erase on " + str(h.serial))
                     break;
@@ -193,6 +193,7 @@ class ListModel:
             for h in self.hdds:
                 if h.serial == s:
                     h.ShortTest()
+                    print("Queued short test on {0}".format(h.serial))
                     break;
         l.release()
         return True
@@ -208,6 +209,7 @@ class ListModel:
             for h in self.hdds:
                 if h.serial == s:
                     h.LongTest()
+                    print("Queued long test on {0}".format(h.serial))
                     break;
         l.release()
         return True
@@ -272,7 +274,9 @@ class ListModel:
         for s in serials:
             for h in self.hdds:
                 if h.serial == s:
+                    name = h.TaskQueue.CurrentTask.name if h.TaskQueue.CurrentTask != None else ''
                     h.TaskQueue.AbortCurrentTask()
+                    print("Sent abort to current task {0} on {1}".format(name, h.serial))
                     break;
         l.release()
         return True
@@ -307,7 +311,7 @@ class ListModel:
                     h.TaskQueue.RemoveTask(index)
                 elif(action == 'set'):
                     if(newindex == None):
-                        return (False, 'No new index given with set operation')
+                        return (False, 'No new index given with \'set\' operation')
                     h.TaskQueue.SetIndex(index, newindex)
                 else:
                     return (False, 'Unknown modifyqueue action \'' + str(action) + '\'')
@@ -358,7 +362,7 @@ class ListModel:
 
     def updateLoop(self):
         '''
-        This loop should be run in a separate thread. Watches for external process and smart tests not initialized by this program.
+        This loop should be run in a separate thread. Watches for external processes and smart tests not initialized by this program.
         '''
         print("Loop running")
         smart_coldcall_interval = 30.0 #seconds
@@ -487,14 +491,15 @@ class ListModel:
         self.observer.stop()
         print("stopping tasks...")
         for h in self.hdds:
+            print("Stopping tasks on {0}".format(h.serial))
             h.TaskQueue.Pause = True
-            if(h.CurrentTaskStatus != TaskStatus.External) and (h.CurrentTaskStatus != TaskStatus.Idle) and (h.CurrentTaskStatus != TaskStatus.Error):
+            if(h.CurrentTaskStatus != TaskStatus.Idle) and (h.CurrentTaskStatus != TaskStatus.Error):
                 if(h.CurrentTaskStatus == TaskStatus.External) or (h.CurrentTaskStatus == TaskStatus.LongTesting) or (h.CurrentTaskStatus == TaskStatus.ShortTesting):
                     print("Detaching task " + str(h.TaskQueue.CurrentTask.name) + " on " + h.serial)
                     h.TaskQueue.CurrentTask.detach()
                 else:
                     print("Aborting task " + str(h.TaskQueue.CurrentTask.name) + " (PID: " + str(h.TaskQueue.CurrentTask.PID) + ") on " + h.serial)
-                    h.TaskQueue.CurrentTask.abort()
+                    h.TaskQueue.CurrentTask.abort(wait=True) #Wait for abortion so database entries can be entered before we disconnect the database.
             if(h.status == HealthStatus.LongTesting or h.status == HealthStatus.ShortTesting) and h.test != None:
                 print("Detaching from SMART test on " + h.serial)
                 if h.test != None:

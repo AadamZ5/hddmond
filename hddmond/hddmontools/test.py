@@ -89,19 +89,25 @@ class Test(Task):
         self._callCallbacks()
 
     def _captive_test(self, *args):
-        self.date_started = datetime.datetime.utcnow()
+        self.date_started = datetime.datetime.now(datetime.timezone.utc)
         r, t = self.device.run_selftest_and_wait(args[0], polling=args[1], progress_handler=self._progressHandler)
-        self.date_completed = datetime.datetime.utcnow()
+        self.date_completed = datetime.datetime.now(datetime.timezone.utc)
         #After we finish the test
         self._processReturnCode(r, t)
         self._testing = False
         self._finished = True
         self._callCallbacks()
 
-    def abort(self):
+    def abort(self, wait=False):
         self.notes.add("Aborted test.", note_taker="hddmond")
         self.device.abort_selftest()
         #The _test function takes care of the result management
+        if wait == True:
+            print("\tWaiting for {0} to stop...".format(self._testingThread.name))
+            try:
+                self._testingThread.join()
+            except RuntimeError:
+                pass
 
     def detach(self):
         '''

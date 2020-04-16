@@ -33,7 +33,7 @@ class GenericDatabase:
     def decommission(self, decommissioned=True):
         pass
 
-    def insert_attribute_capture(self, serial: str, attribute_capture):
+    def insert_attribute_capture(self, hdd: HddData):
         pass
 
     def set_image(self, image:ImageData):

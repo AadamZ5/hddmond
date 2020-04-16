@@ -108,7 +108,7 @@ class SmartData(Interface):
             t = (str(k), device.test_capabilities[k])
             test_capabilities.append(t)
 
-        return SmartData(datetime.datetime.utcnow().isoformat(), formatted_attrs, device.firmware, device.interface, device.messages, device.smart_capable, device.smart_enabled, device.assessment, test_capabilities)
+        return SmartData(datetime.datetime.now(datetime.timezone.utc).isoformat(), formatted_attrs, device.firmware, device.interface, device.messages, device.smart_capable, device.smart_enabled, device.assessment, test_capabilities)
 
 @dataclass
 class TaskData(Interface):

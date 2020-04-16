@@ -7,7 +7,7 @@ import datetime
 
 
 class Note:
-    def __init__(self, note="", timestamp=datetime.datetime.utcnow(), note_taker="", tags=None):
+    def __init__(self, note="", timestamp=datetime.datetime.now(datetime.timezone.utc), note_taker="", tags=None):
         if tags == None:
             tags = []
 
@@ -30,6 +30,6 @@ class Notes:
                 del self.entries[i]
                 break
     
-    def add(self, note="", timestamp=datetime.datetime.utcnow(), note_taker="", tags=None):
+    def add(self, note="", timestamp=datetime.datetime.now(datetime.timezone.utc), note_taker="", tags=None):
         n = Note(note, timestamp, note_taker, tags)
         self.entries.append(n)

@@ -11,7 +11,6 @@ from .image import DiskImage, Partition
 from .notes import Notes
 import datetime
 
-
 class TaskResult(enum.Enum):
     FINISHED = 1,
     ERROR = 0,
@@ -59,9 +58,10 @@ class Task:
         '''
         pass
 
-    def abort(self):
+    def abort(self, wait=False):
         '''
         Should be overridden in a sub-class to provide the implimentation of aborting the task.
+        If wait is true, the method should wait to return until the task is totally aborted.
         '''
         pass
 
@@ -320,7 +320,7 @@ class ExternalTask(Task):
         if(self._pollingThread.isAlive):
             return False
         else:
-            self.time_started = datetime.datetime.utcnow()
+            self.time_started = datetime.datetime.now(datetime.timezone.utc)
             self._pollingThread.start()
             return True
 
@@ -331,17 +331,24 @@ class ExternalTask(Task):
             time.sleep(self._pollingInterval)
 
         self.notes.add("The process has exited.", note_taker="hddmond")
-        self.time_ended = datetime.datetime.utcnow()
+        self.time_ended = datetime.datetime.now(datetime.timezone.utc)
         if(self._callback != None) and (self._poll == True):
             self._callback(0) #They might be expecting a return code. We can't obtain it, so assume 0. 
     
-    def abort(self, true_abort=False):
+    def abort(self, wait=False, true_abort=False):
         if(true_abort == True): #Don't kill the process unless explicitly stated.
             if(self._procview.is_alive == True):
                 self.notes.add("A termination signal was sent to the process.", note_taker="hddmond")
                 self._procview.terminate()
         else:
             self.detach()
+        
+        if wait == True:
+            print("\tWaiting for {0} to stop...".format(self._pollingThread.name))
+            try:
+                self._pollingThread.join()
+            except RuntimeError:
+                pass
 
     def detach(self):
         '''
@@ -354,7 +361,6 @@ class ExternalTask(Task):
             pass
         self.notes.add("The process was detatched from the hddmond monitor.", note_taker="hddmond")
     
-
 class EraseTask(Task):
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -414,7 +420,7 @@ class EraseTask(Task):
         return self._returncode != None
         
     def start(self, progress_callback=None):
-        self.time_started = datetime.datetime.utcnow()
+        self.time_started = datetime.datetime.now(datetime.timezone.utc)
         self._progress_cb = progress_callback
         self._subproc = subprocess.Popen(['scrub', '-f', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         self._PID = self._subproc.pid
@@ -424,11 +430,18 @@ class EraseTask(Task):
         self.notes.add("Erasing was started on this storage device.", note_taker="hddmond")
 
 
-    def abort(self):
+    def abort(self, wait=False):
         if(self._subproc):
             if(self.Finished == False):
                 self.notes.add("Erase task aborted at " + str(self.Progress) + "%.", note_taker="hddmond")
             self._subproc.terminate()
+        if wait == True:
+            print("\tWaiting for {0} to stop...".format(self._pollingThread.name))
+            try:
+                self._pollingThread.join()
+            except RuntimeError:
+                pass
+
 
     def _monitorProgress(self):
         if(self._progress_cb != None) and callable(self._progress_cb):
@@ -448,7 +461,7 @@ class EraseTask(Task):
                         self._progress_cb(self.Progress, self._progressString)
                     lastprogress = self._progress
         self.returncode = self._returncode
-        self.time_started = datetime.datetime.utcnow()
+        self.time_started = datetime.datetime.now(datetime.timezone.utc)
         if(self._returncode == 0):
             self.notes.add("Full erase performed on storage device. Wrote 0xFF to all bits.", note_taker="hddmond")
         else:
@@ -495,7 +508,7 @@ class ImageTask(Task):
         self._progress_cb = None
         
     def start(self, progress_callback=None):
-        self.time_started = datetime.datetime.utcnow()
+        self.time_started = datetime.datetime.now(datetime.timezone.utc)
         self._subproc = subprocess.Popen(['/usr/sbin/ocs-sr', '-e1', 'auto', '-e2', '-nogui', '-batch', '-r', '-irhr', '-ius', '-icds', '-j2', '-k1', '-cmf', '-scr', '-p', 'true', 'restoredisk', self._image.name, self._diskname], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)        
         self._PID = self._subproc.pid
         self._proctree = get_process_tree().find(pid=self.PID, recursive=True)
@@ -562,7 +575,7 @@ class ImageTask(Task):
             self._check_subproc()
 
         self.returncode = self._returncode
-        self.time_started = datetime.datetime.utcnow()
+        self.time_started = datetime.datetime.now(datetime.timezone.utc)
         if(self._returncode == 0):
             self.notes.add("Finished imaging " + self._image.name + ".", note_taker="hddmond")
         else:
@@ -586,7 +599,7 @@ class ImageTask(Task):
                 pass
             self._poll = False  
             
-    def abort(self):
+    def abort(self, wait=False):
         
         self._poll = False
         if(self._subproc):
@@ -594,4 +607,10 @@ class ImageTask(Task):
         self.notes.add("Image task aborted.", note_taker="hddmond")
         # if(self._callback != None and callable(self._callback)):
         #     self._callback(self._returncode)
+        if wait == True:
+            print("\tWaiting for {0} to stop...".format(self._pollingThread.name))
+            try:
+                self._pollingThread.join()
+            except RuntimeError:
+                pass
         
