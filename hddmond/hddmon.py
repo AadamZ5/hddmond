@@ -15,7 +15,7 @@ import pySMART
 import time
 import threading
 from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData
-from hddmontools.hdd import Hdd, HddViewModel, HealthStatus, TaskStatus
+from hddmontools.hdd import Hdd, HealthStatus, TaskStatus
 from hddmontools.task import TaskQueue
 from hddmontools.pciaddress import PciAddress
 from hddmontools.portdetection import PortDetection
@@ -182,11 +182,11 @@ class HddWidget(ui.WidgetWrap):
             self._stat.set_text((self.hdd.status, str(self.hdd.assessment)))
         
         if(self.hdd.status != TaskStatus.Idle):
-            self._task.set_text((self.hdd.status, str(self.hdd.task_queue.current_task.string_rep) + (" (" + str(len(self.hdd.task_queue.queue)) + ")" if len(self.hdd.task_queue.queue) > 0 else "")))
-            self._cap.set_text((self.hdd.status, self.hdd.size))
+            self._task.set_text((self.hdd.status, str(self.hdd.task_queue.current_task.string_rep if self.hdd.task_queue.current_task != None else "None") + (" (" + str(len(self.hdd.task_queue.queue)) + ")" if len(self.hdd.task_queue.queue) > 0 else "")))
+            self._cap.set_text((self.hdd.status, str(self.hdd.capacity)))
         else:
             self._task.set_text((self.hdd.status, "Idle" + (" (" + str(len(self.hdd.task_queue.queue)) + ")" if len(self.hdd.task_queue.queue) > 0 else "")))
-            self._cap.set_text(('text',self.hdd.size))
+            self._cap.set_text(('text',str(self.hdd.capacity)))
 
     def get_attr_map(self):
         return self._main.get_attr_map()
@@ -471,8 +471,7 @@ class Application(object):
             found = False
             for h in localhdds:
                 if(str(h.serial) == str(hw.hdd.serial)) and not (h in foundhdds):
-                    hvm = HddViewModel.FromHdd(h)
-                    hw.Update(hvm) #Update the widget with the new hdd info
+                    hw.Update(h) #Update the widget with the new hdd info
                     foundhdds.append(h)
                     found = True
                     break 
@@ -759,7 +758,7 @@ class Application(object):
 
     def ShowHddInfo(self, button=None, hdw=None):
         hdd = None
-        for h in self.hddobjs: #Get the actual hdd.Hdd type that corresponds to our hdd.HddViewModel
+        for h in self.hddobjs:
             if h.serial == hdw.hdd.serial:
                 hdd = h
                 break
@@ -914,6 +913,5 @@ class Application(object):
         exit(0)
 
 if __name__ == '__main__':
-    #commander = Commander(('localhost', 63962), b'H4789HJF394615R3DFESZFEZCDLPOQ')
     app = Application()
     app.start()

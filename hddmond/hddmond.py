@@ -4,7 +4,6 @@ from hddmondtools.websocket import WebsocketServer
 from hddmondtools.multiproc_socket import MultiprocSock
 from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData, ImageData
 import signal
-from hddmondtools.gqldb import GraphQlDatabase
 from hddmondtools.couchdb import CouchDatabase
 from hddmontools.image import ImageManager, CustomerImage, DiskImage
 

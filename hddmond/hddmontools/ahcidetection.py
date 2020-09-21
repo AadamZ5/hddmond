@@ -27,7 +27,6 @@ class AhciDevice():
                 pcistring = cols[3]
                 pci_seg_bus_devfun = pcistring.split(':')
 #               ['0000', '00', '1f.2', '']          <----------<|
-                #print(pci_seg_bus_devfun)
                 seg = str(pci_seg_bus_devfun[0])          #     |
                 bus = str(pci_seg_bus_devfun[1])          #     ^
                 devfun = pci_seg_bus_devfun[2].split('.') #The device and function numbers are split by a '.' instead of a ':'....

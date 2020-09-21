@@ -1,3 +1,4 @@
+from __future__ import annotations
 import pyudev
 import pySMART
 import time
@@ -10,11 +11,9 @@ from .task import EraseTask, ImageTask, TaskQueue
 from .notes import Notes
 import proc.core
 
-
 #
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  
 #
-
 class HealthStatus(enum.Enum):
     Failing = 0,
     ShortTesting = 1,
@@ -59,16 +58,6 @@ class Hdd:
         self.__dict__.update(state)
         # Restore the udev link
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), self.node)
-        
-    @property
-    def testProgress(self):
-        if(self.test != None):
-            return self.test.progress
-        else:
-            if ('_test_progress' in self._smart.__dict__):
-                return self._smart._test_progress
-            else:
-                return 0
 
     def __init__(self, node: str):
         '''
@@ -102,9 +91,8 @@ class Hdd:
             self.capacity = size
         except AttributeError:
             pass
-        except Exception as e:
-            print("Exception occurred while parsing capacity of drive " + self.serial)
-            print("This drive may not function properly")
+        except Exception:
+            print("Exception occurred while parsing capacity of drive " + self.serial + ". This drive may not function properly")
 
         self._smart_last_call = time.time()
         self.medium = None #SSD or HDD
@@ -140,14 +128,14 @@ class Hdd:
             #Idk where we go from here
         
     @staticmethod
-    def FromSmartDevice(d: pySMART.Device):
+    def FromSmartDevice(d: pySMART.Device) -> Hdd:
         '''
         Create a HDD object from a pySMART Device object
         '''
         return Hdd("/dev/" + d.name)
 
     @staticmethod
-    def FromUdevDevice(d: pyudev.Device): #pyudev.Device
+    def FromUdevDevice(d: pyudev.Device) -> Hdd: #pyudev.Device
         '''
         Create a HDD object from a pyudev Device object
         '''
@@ -156,7 +144,7 @@ class Hdd:
         return h
 
     @staticmethod
-    def IsHdd(node: str):
+    def IsHdd(node: str) -> bool:
         '''
         See if this storage object has an HDD-like interface.
         '''
@@ -170,7 +158,7 @@ class Hdd:
             if c != None and callable(c):
                 c(self, *args, **kw)
 
-    def AddTaskChangeCallback(self, callback):
+    def AddTaskChangeCallback(self, callback) -> None:
         self._task_changed_callbacks.append(callback)
 
     def _testCompletedCallback(self, result: TestResult):
@@ -197,19 +185,15 @@ class Hdd:
         self.status = HealthStatus.LongTesting
         self.CurrentTaskStatus = TaskStatus.LongTesting
 
-    def ShortTest(self):
+    def ShortTest(self) -> None:
         #self.status = HealthStatus.ShortTesting
         t = Test(self._smart, 'short', pollingInterval=5, callback=self._testCompletedCallback)
         self.TaskQueue.AddTask(t, preexec_cb=self._shorttest)
 
-    def LongTest(self):
+    def LongTest(self) -> None:
         #self.status = HealthStatus.ShortTesting
         t = Test(self._smart, 'long', pollingInterval=5, callback=self._testCompletedCallback)
         self.TaskQueue.AddTask(t, preexec_cb=self._longtest)
-
-    def AbortTest(self):
-        if(self.test != None):
-            self.test.abort()
 
     def _taskCompletedCallback(self, returncode):
         if(returncode != 0):
@@ -220,7 +204,7 @@ class Hdd:
     def _erasing(self):
         self.CurrentTaskStatus = TaskStatus.Erasing
 
-    def Erase(self, callback=None):
+    def Erase(self, callback=None) -> bool:
         if not self.TaskQueue.Full:
             t = EraseTask(self.node, self.Size.replace('GB', '').strip(), callback=self._taskCompletedCallback)
             r = self.TaskQueue.AddTask(t, preexec_cb=self._erasing)
@@ -231,23 +215,15 @@ class Hdd:
     def _imaging(self):
         self.CurrentTaskStatus = TaskStatus.Imaging
 
-    def Image(self, image, callback=None):
+    def Image(self, image, callback=None) -> bool:
         if not self.TaskQueue.Full:
             t = ImageTask(image, self.name, self._taskCompletedCallback)
             self.TaskQueue.AddTask(t, preexec_cb=self._imaging)
             return True #We queued the task sucessfully
         else:
             return False #Queue is full, wait.
-
-    def GetTestProgressString(self):
-        if(self.testProgress == None):
-            p = "0"
-        else:
-            p = str(self.testProgress)
-
-        return p + "%"
     
-    def GetTaskProgressString(self):
+    def GetTaskProgressString(self) -> str:
         if(self.TaskQueue.CurrentTask != None) and (self.CurrentTaskStatus != TaskStatus.Idle):
             if(self.CurrentTaskStatus == TaskStatus.Error):
                 return "Err: " + str(self.TaskQueue.CurrentTask._returncode)
@@ -261,7 +237,7 @@ class Hdd:
         else:
             return "Idle"
 
-    def UpdateSmart(self):
+    def UpdateSmart(self) -> None:
         self._smart.update()
 
     def capture_attributes(self):
