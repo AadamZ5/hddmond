@@ -93,7 +93,7 @@ class SmartData(Interface):
     smart_enabled: bool
     assessment: str
     test_capabilities: List[Tuple[str, bool]]
-    #tests: Test #Test type not implimented yet. We must rely on our database to hold this info. pySMART is skimpy here.
+    #tests: Test #Test type not implimented yet. We must rely on our database to hold this info. S.M.A.R.T. is skimpy here.
 
     @staticmethod
     def FromSmartDev(device):

@@ -5,12 +5,11 @@ Requires=udev.service
 [Service]
 ExecStart=/etc/hddmon/env/bin/python3.8 /etc/hddmon/hddmond.py
 Restart=always
-StandardOutput=file:/etc/hddmon/o.log
-StandardError=file:/etc/hddmon/e.log
 User=root
 Group=root
 
 [Install]
+WantedBy=multi-user.target
 Alias=hddmond
 
 

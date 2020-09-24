@@ -15,24 +15,6 @@ import pySMART
 import time
 import threading
 from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData
-from hddmontools.hdd import Hdd, HealthStatus, TaskStatus
-from hddmontools.task import TaskQueue
-from hddmontools.pciaddress import PciAddress
-from hddmontools.portdetection import PortDetection
-
-# euid = os.geteuid()
-# if euid != 0:
-#     print("May I have root privledges? Without them 'htop' may not list disk usage correctly.")
-#     inp = input("Please enter yes or no: ")
-#     if ('y' in inp.strip().lower()):
-#         args = ['sudo', sys.executable] + sys.argv + [os.environ]
-#         # the next line replaces the currently-running process with the sudo
-#         os.execlpe('sudo', *args)
-#     else:
-#         print("Not elevated.")
-#         time.sleep(1.25)
-
-
 
 debug = False
 def logwrite(s:str, endl='\n'):
@@ -51,7 +33,7 @@ class HddTestsWidget(ui.WidgetWrap):
             label = ui.Text(str(t))
             self._rows_.append(label)
 
-        self._listwalker = ui.SimpleListWalker()
+        self._listwalker = ui.SimpleListWalker(contents=None)
         self._list = ui_special.IndicativeListBox
 
 class TaskQueueWidget(ui.WidgetWrap):
@@ -176,12 +158,9 @@ class HddWidget(ui.WidgetWrap):
         
         self._id.set_text((self.hdd.status, str(self.hdd.serial)))
 
-        if(self.hdd.status == HealthStatus.ShortTesting) or (self.hdd.status == HealthStatus.LongTesting):
-            self._stat.set_text((self.hdd.status, str(self.hdd.task_queue.current_task.progress)))
-        else:
-            self._stat.set_text((self.hdd.status, str(self.hdd.assessment)))
+        self._stat.set_text((self.hdd.status, str(self.hdd.assessment)))
         
-        if(self.hdd.status != TaskStatus.Idle):
+        if(self.hdd.status != "Idle"):
             self._task.set_text((self.hdd.status, str(self.hdd.task_queue.current_task.string_rep if self.hdd.task_queue.current_task != None else "None") + (" (" + str(len(self.hdd.task_queue.queue)) + ")" if len(self.hdd.task_queue.queue) > 0 else "")))
             self._cap.set_text((self.hdd.status, str(self.hdd.capacity)))
         else:
@@ -282,20 +261,7 @@ class Application(object):
         ('focus text',      'light gray',     'dark gray'),
         ('exit',            'light gray',       'black'),
         ('exit focus',      'light gray',       'light red'),
-        (HealthStatus.Failing, 'light red',        'black'),
-        (HealthStatus.Default, 'light gray', 'black'),
-        (HealthStatus.Passing, 'light green', 'black'),
-        (HealthStatus.ShortTesting, 'yellow', 'black'),
-        (HealthStatus.Warn, 'black', 'yellow'),
-        (HealthStatus.Unknown, 'light gray', 'dark red'),
-        (HealthStatus.LongTesting, 'light magenta', 'black'),
-        (TaskStatus.Erasing, 'light cyan', 'black'),
-        (TaskStatus.Idle, 'dark gray', 'black'),
-        (TaskStatus.External, 'dark blue', 'black'),
-        (TaskStatus.Error, 'dark red', 'black'),
-        (TaskStatus.Imaging, 'black', 'dark blue'),
-        (TaskStatus.ShortTesting, 'yellow', 'black'),
-        (TaskStatus.LongTesting, 'light magenta', 'black'),]
+        ]
         
         self.focus_map = {
         'heading': 'focus heading',
