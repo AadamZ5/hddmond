@@ -151,7 +151,7 @@ class DiskImage:
                                                                                   #     😊
                         rootdir = re.sub('(\/tmp\/chksum_tmpd\.\w{6})', '', dir_) #  ------------/Drivers/kioskreport/MasterInfo.dll
                         p.md5sums.update({rootdir: sum_})
-                self._write_new_md5sums(p)
+                #self._write_new_md5sums(p)
                 continue
                 
     def _write_new_md5sums(self, p:Partition):
@@ -172,52 +172,6 @@ class CustomerImage(DiskImage):
         c.customer = customer
         return c
         
-class CopyManager:
-
-    @property
-    def Progress(self):
-        return (self.files_copied/self.files_to_copy)*100
-
-    def __init__(self):
-        self.files_to_copy: int
-        self.files_copied: int = 0
-        self._stop = False
-
-    def _copy_progress(self, src, dest, symlinks: bool = True):
-        if self._stop == True:
-            raise InterruptedError("Copy canceled")
-        newdst = shutil.copy2(src,dest,follow_symlinks=symlinks)
-        self.files_copied += 1
-        return newdst
-
-    def _count_files(self, directory):
-        total = 0
-        #dirpath, dirnames, filenames = os.walk(directory)
-        for dirpath, dirnames, filenames in os.walk(directory):
-            for file in filenames:
-                total += 1
-
-            for directory in dirnames:
-                total += self._count_files(os.path.join(dirpath,directory))
-        
-        return total
-
-    def copy(self, src, dest):
-        self.files_to_copy = self._count_files(src)
-        try:
-            if(os.path.isdir(src)):
-                shutil.copytree(src, dest, copy_function=self._copy_progress)
-            elif(os.path.isfile(src)):
-                self._copy_progress(src,dest)
-        except InterruptedError as e:
-            print("Copy incompleted:")
-            print(str(e))
-        else:
-            print("Copy completed")
-
-    def stop(self):
-        self._stop = True
-        
 class ImageUpload:
     def __init__(self, endpoint, ftp_user, expire_in:datetime.timedelta):
         self.endpoint = str(endpoint)
@@ -229,7 +183,7 @@ class ImageUpload:
 
 class ImageManager:
     def __init__(self):
-        self._image_path = r'/etc/hddmon/images/' #Onboarded images go here.
+        self._image_data_path = r'/etc/hddmon/images_data/images/'
         self._image_credentials = r'/etc/hddmon/images_data/users.conf'
         self.discovered_images = [] #List of DiskImage
         self._adding_images = [] #List of (CopyManager || None,  DiskImage || string) that are being added. 
@@ -250,12 +204,12 @@ class ImageManager:
         pass
 
     def _load_existing_images(self):
-        if not os.path.exists(self._image_path):
+        if not os.path.exists(self._image_data_path):
             return
-        directories = os.listdir(self._image_path)
+        directories = os.listdir(self._image_data_path)
         for name in directories:
-            directory = os.path.join(self._image_path,name)
-            print("Loading image " + directory)
+            directory = os.path.join(self._image_data_path,name)
+            print("Loading image data from " + directory)
             datadat = os.path.join(directory, 'hddmond-data.dat')
             if(os.path.isdir(directory)) and (os.path.exists(datadat)):
                 try:
@@ -285,43 +239,27 @@ class ImageManager:
                 except Exception as e:
                     print("Error adding image at " + directory + ":\n" + str(e))
 
-    def _copy_image_thread(self, image: DiskImage, customer: str, copydone=None):
-        print("Copying local image {0} in background...".format(image.name))
-        self.discovered_images.remove(image)
-        cp_manager = CopyManager()
-        t = (cp_manager, image)
-        #t = (None, image)
-        self._adding_images.append(t)
-        newpath = os.path.join(self._image_path, image.name)
-        print(newpath)
-        try:
-            cp_manager.copy(image.path, newpath)
-            #os.symlink(image.path, newpath, target_is_directory=os.path.isdir(image.path))
-        except Exception as e:
-            print("Failed copying {0}:".format(image.name))
-            print(str(e))
-        else:
-            print("Copied and added image {0} to onboarded images.".format(image.name))
-            self._adding_images.remove(t)
-            c = CustomerImage(image.name, newpath, customer)
-            if copydone != None and callable(copydone):
-                copydone(c)
-        
-    def _copy_image_done(self, image: CustomerImage):
-        self.added_images.append(image)
-        with open(os.path.join(image.path, 'hddmond-data.dat'), 'wb') as fd:
-            pickle.dump(image, fd)
-        print("Done adding " + str(image.name))
+    def _save_image_data(self, c_img: CustomerImage):
+        #TODO Do MD5 stuffs and save a data file to self._image_data_path
 
-    def _copy_image(self, image: DiskImage, customer: str):
-        ct = threading.Thread(target=self._copy_image_thread, args=(image,customer,self._copy_image_done), name="copy_image_{0}".format(image.name))
-        ct.start()
+        data_path = os.path.join(self._image_data_path, c_img.name)
+        os.makedirs(data_path, exist_ok=True)
+        datadat = os.path.join(data_path, 'hddmond-data.pickle')
+        try:
+            import pickle
+            with open(datadat,'r+b') as fd:
+                pickle.dump(c_img, fd)
+                self.added_images.append(c_img)
+        except Exception as e:
+            print("Error pickling image at " + datadat + ":\n" + str(e))
+        pass
 
     def onboard_image(self, image_name: str, customer: str):
         for i in range(len(self.discovered_images)):
             if self.discovered_images[i].name == image_name:
                 disk_image = self.discovered_images[i]
-                self._copy_image(disk_image, customer)
+                cus_image = CustomerImage(image_name, disk_image.path, customer)
+                self._save_image_data(cus_image)
                 break
 
     def get_images(self, *a, **kv):
@@ -329,9 +267,6 @@ class ImageManager:
 
     def stop(self):
         self._stop = True
-        for manager, image in self._adding_images:
-            if manager != None:
-                manager.stop()
 
         remove_list = []
         for iu in self._image_uploads:

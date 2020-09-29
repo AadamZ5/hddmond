@@ -1,17 +1,13 @@
-#!./env/bin/python3.8
+#!/usr/bin/python3.8
 import os, sys
 os.chdir('/etc/hddmon')
 print(os.getcwd())
 sys.path.append('/etc/hddmon')
 import subprocess
 import multiprocessing.connection as ipc
-import proc.core
-import pyudev
-from pySMART import Device
 import re
 import urwid as ui
 import additional_urwid_widgets as ui_special
-import pySMART
 import time
 import threading
 from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData
@@ -40,15 +36,11 @@ class TaskQueueWidget(ui.WidgetWrap):
 
     @property
     def paused(self):
-        return self._tq.Pause
+        return self._tq.paused
 
-    def __init__(self, serial, taskqueue: TaskQueueData, task_up_cb=None, task_dn_cb=None, task_del_cb=None, pause_cb=None):
+    def __init__(self, serial, taskqueue: TaskQueueData):
         self._rows_ = []
         self._tq = taskqueue
-        self._t_u_cb = task_up_cb
-        self._t_d_cb = task_dn_cb
-        self._t_r_cb = task_del_cb
-        self._p_cb = pause_cb
         self._serial = serial
         self._gen_rows()
         self._listwalker = ui.SimpleFocusListWalker(self._rows_)
@@ -76,7 +68,7 @@ class TaskQueueWidget(ui.WidgetWrap):
         for i in range(len(self._tq.completed)):
             oldt = self._tq.completed[i]
             n = ui.Text(('options',str(i+1) + ": "))
-            name = ui.Text(('options',str(oldt)))
+            name = ui.Text(('options',str(oldt.name) + ' ' + str(oldt.return_code)))
             col = ui.Columns([('pack',n), name])
             self._rows_.append(col)
 
@@ -84,38 +76,47 @@ class TaskQueueWidget(ui.WidgetWrap):
 
 
     def _taskup(self, button, index=None, *args, **kwargs):
-        if(self._t_u_cb != None and callable(self._t_u_cb)):
-            self._t_u_cb(index=index, callback=self._cb_u, serial=self._serial)
+        commander.send_command('modifyqueue', data={'index': index, 'action': 'up', 'serial': self._serial}, callback=self._cb_u)
+            
 
     def _taskdown(self, button, index=None, *args, **kwargs):
-        if(self._t_d_cb != None and callable(self._t_d_cb)):
-            self._t_d_cb(index=index, callback=self._cb_d, serial=self._serial)
-
+        commander.send_command('modifyqueue', data={'index': index, 'action': 'down', 'serial': self._serial}, callback=self._cb_d)
+            
     def _taskdel(self, button, index=None, *args, **kwargs):
-        if(self._t_r_cb != None and callable(self._t_r_cb)):
-            self._t_r_cb(index=index, callback=self._cb_r, serial=self._serial)
+        commander.send_command('modifyqueue', data={'index': index, 'action': 'remove', 'serial': self._serial}, callback=self._cb_r)
 
     def _cb_u(self, *args, **kwargs):
         data = args[0]
+        self._update()
         pass
 
     def _cb_d(self, *args, **kwargs):
         data = args[0]
+        self._update()
         pass
 
     def _cb_r(self, *args, **kwargs):
         data = args[0]
+        self._update()
         pass
 
     def _cb_p(self, *args, **kwargs):
         data = args[0]
-        pass        
+        self._update()
 
     def _pause(self, button, pause):
-        if(self._p_cb != None and callable(self._p_cb)):
-            self._p_cb(callback=self._cb_p, serial=self._serial, pause=(not self._tq.paused))
+        commander.send_command('pausequeue', data={'pause': not self._tq.paused, 'serials': [self._serial]}, callback=self._cb_p)
 
-    def _update(self, taskQueue: TaskQueueData):
+    def _update(self):
+        commander.send_command('hdds', data={'serial': self._serial}, callback=self._update_cb)
+
+    def _update_cb(self, *a, **kw):
+        if('success' in a[0]):
+            data = a[0][1]
+            hdd = data['hdd']
+            self._process_update(hdd.task_queue)
+
+    def _process_update(self, taskQueue: TaskQueueData):
         self._tq = taskQueue
         self._pause_button.set_label(('Pause' if not self._tq.paused else 'Unpause'))
         self._rows_.clear()
@@ -408,7 +409,6 @@ class Application(object):
         self.processImages(args[0][1])
         self.ShowImagePickDialog(args=[self.images, self.commandImage])
         
-
     def commandImage(self, *args, **kwargs):
         serialList = self._getSelectedSerials()
         image = None
@@ -723,70 +723,29 @@ class Application(object):
         self.loop.widget = self.MainFrame
 
     def ShowHddInfo(self, button=None, hdw=None):
-        hdd = None
-        for h in self.hddobjs:
-            if h.serial == hdw.hdd.serial:
-                hdd = h
-                break
+        hdd = hdw.hdd
 
-        if hdd == None:
-            self.ShowErrorDialog(text=["HDD " + str(hdw.hdd.serial) + "not found.\n", "Was the hard drive removed?"])
-            return
-
-        try:
-            hdd.UpdateSmart()
-            hdd.UpdateTask()
-        except Exception as e:
-            pass
-        
         labelColWidth = 15
         valueColWidth = 85
 
         serial = ui.Columns([('weight', labelColWidth, ui.Text("Serial:", align='left')), ('weight',valueColWidth,ui.Text(hdd.serial))])
         model = ui.Columns([('weight', labelColWidth, ui.Text("Model:", align='left')), ('weight',valueColWidth,ui.Text(hdd.model))])
-        size = ui.Columns([('weight', labelColWidth, ui.Text("Size:", align='left')), ('weight',valueColWidth,ui.Text(hdd.Size))])
-        medium = ui.Columns([('weight', labelColWidth, ui.Text("Type:", align='left')), ('weight',valueColWidth,ui.Text(hdd.medium))])
-        currentStatus = ui.Columns([('weight', labelColWidth, ui.Text("Current Status:", align='left')), ('weight',valueColWidth,ui.Text((hdd.status,str(hdd.status))))])
+        size = ui.Columns([('weight', labelColWidth, ui.Text("Size:", align='left')), ('weight',valueColWidth,ui.Text(str(hdd.capacity)))])
+        medium = ui.Columns([('weight', labelColWidth, ui.Text("Type:", align='left')), ('weight',valueColWidth,ui.Text(hdd.smart.interface))])
+        currentStatus = ui.Columns([('weight', labelColWidth, ui.Text("Current Status:", align='left')), ('weight',valueColWidth,ui.Text(str(hdd.status)))])
 
-        if hdd._smart.tests == None:
+        #if hdd.smart.tests == None:
+        if True:
             testsNumber = ui.Columns([('weight', labelColWidth, ui.Text("Tests:", align='left')), ('weight',valueColWidth,(ui.Text("0", align='left')))])
             testsList = ui.Columns([('weight', labelColWidth, ui.Text("...", align='left')), ('weight', valueColWidth, ui.Text(''))])
         else:
-            testsNumber = ui.Columns([('weight', labelColWidth, ui.Text("Tests:", align='left')), ('weight',valueColWidth,(ui.Text(str(len(hdd._smart.tests)), align='left')))])
+            testsNumber = ui.Columns([('weight', labelColWidth, ui.Text("Tests:", align='left')), ('weight',valueColWidth,(ui.Text(str(len(hdd.smart.tests)), align='left')))])
             testObjs = []
             for t in hdd._smart.tests:
                 testObjs.append(ui.Text(str(t)))
             testsList = ui.Columns([('weight', labelColWidth, ui.Text("...", align='left')), ('weight', valueColWidth, ui.BoxAdapter(ui.ListBox(ui.SimpleListWalker(testObjs)), 10))])
 
-
-        def task_up(*args, **kwargs):
-            index = kwargs.get('index', None)
-            cb = kwargs.get('callback', None)
-            serial = kwargs.get('serial', None)
-            action = 'up'
-            commander.send_command('modifyqueue', data={'index': index, 'action': action, 'serial': serial}, callback=cb)
-
-        def task_dn(*args, **kwargs):
-            index = kwargs.get('index', None)
-            cb = kwargs.get('callback', None)
-            serial = kwargs.get('serial', None)
-            action = 'down'
-            commander.send_command('modifyqueue', data={'index': index, 'action': action, 'serial': serial}, callback=cb)
-
-        def task_rm(*args, **kwargs):
-            index = kwargs.get('index', None)
-            cb = kwargs.get('callback', None)
-            serial = kwargs.get('serial', None)
-            action = 'remove'
-            commander.send_command('modifyqueue', data={'index': index, 'action': action, 'serial': serial}, callback=cb)
-
-        def pause(*args, **kwargs):
-            cb = kwargs.get('callback', None)
-            serial = kwargs.get('serial', None)
-            pause = kwargs.get('pause', None)
-            commander.send_command('pausequeue', data={'serials': [serial,], 'pause': pause}, callback=cb)
-
-        taskqueues = TaskQueueWidget(hdd.serial, hdd.TaskQueue, task_up_cb=task_up, task_dn_cb=task_dn, task_del_cb=task_rm, pause_cb=pause)
+        taskqueues = TaskQueueWidget(hdd.serial, hdd.task_queue)
         taskqueues = ui.BoxAdapter(taskqueues, 12)
         taskqueues = ui.Columns([('weight', labelColWidth, ui.Text("Queued tasks:", align='left')), ('weight', valueColWidth, ui.Padding(taskqueues, min_width=15, width=('relative', 30)))])
 
@@ -799,7 +758,7 @@ class Application(object):
         pile = ui.Pile([serial,model,size,medium,testsNumber,testsList,currentStatus,taskqueues,blacklist,ui.Divider(),ex])
         line = ui.LineBox(ui.Filler(pile))
 
-        title = ui.Text((hdd.status, str(hdd.serial) + " info: "))
+        title = ui.Text(str(hdd.serial) + " info: ")
         title = ui.Padding(title, left=3)
 
         frame = ui.Frame(body=line, header=title, focus_part='body')

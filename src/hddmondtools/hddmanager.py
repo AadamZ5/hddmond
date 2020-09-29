@@ -31,7 +31,6 @@ class ListModel:
         self.task_change_outside_callback = taskChangedCallback
         self.hdds = []
         self.blacklist_hdds = self.load_blacklist_file()
-        self.images = []
         self._udev_context = pyudev.Context()
         self.monitor = pyudev.Monitor.from_netlink(self._udev_context)
         self.monitor.filter_by(subsystem='block', device_type='disk')
@@ -42,7 +41,8 @@ class ListModel:
         self.database = database
 
         if self.database != None:
-            self.database.connect()
+            if( not self.database.connect()):
+                self.database = None
 
     def task_change_callback(self, hdd: Hdd, *args, **kwargs):
 
@@ -229,41 +229,6 @@ class ListModel:
         l.release()
         return True
 
-    def sendImages(self, *args, **kwargs):
-        imgs = []
-        for i in self.images:
-            imgs.append(ImageData.FromDiskImage(i))
-        return {'images': imgs}
-
-    def imageBySerial(self, *args, **kw): #applies an image on the drives matching the input serials
-        l = threading.Lock()
-        l.acquire()
-        im = None
-        image = None
-        serials = []
-        if('serials' in kw):
-            serials = kw['serials']
-        if('image' in kw):
-            image = kw['image']
-            
-        for i in self.images:
-            if str(image) == i.name:
-                im = i
-                break
-
-        if im == None:
-            print("Couldn't find image " + str(image))
-            return False
-
-        for s in serials:
-            for h in self.hdds:
-                if h.serial == s:
-                    print("Starting image on " + h.serial + " with image " + im.name)
-                    h.Image(im)
-                    break
-        l.release()
-        return True
-
     def abortTaskBySerial(self, *args, **kw):
         l = threading.Lock()
         l.acquire()
@@ -371,7 +336,7 @@ class ListModel:
             for hdd in self.hdds:
                 if not (hdd.status == HealthStatus.LongTesting) or (hdd.status == HealthStatus.ShortTesting):
                     if(time.time() - hdd._smart_last_call > smart_coldcall_interval): #If we're not testing, occasionally check to see if a test was started externally.
-                        print("smart cold-call to " + str(hdd.serial))
+                        #print("smart cold-call to " + str(hdd.serial))
                         try:
                             hdd.UpdateSmart()
                             hdd._smart_last_call = time.time()
@@ -522,7 +487,6 @@ class ListModel:
         self._loopgo = False
         self.stop()
         self.hdds.clear()
-        self.images.clear()
         self.updateDevices()
         self.start()
 

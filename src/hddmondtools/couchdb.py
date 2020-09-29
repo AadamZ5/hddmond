@@ -15,7 +15,11 @@ class CouchDatabase(GenericDatabase):
     
     def connect(self, *a, **kw):
         self.couch = CouchDB(self._u, self._p, url=self._add, auto_renew=True)
-        self.couch.connect()
+        try:
+            self.couch.connect()
+        except:
+            return False
+        
         self.couch.create_database('hard-drives')
         self.hdddb = self.couch['hard-drives']
         self.couch.create_database('tasks')

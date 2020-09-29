@@ -1,9 +1,10 @@
 [Unit]
 Description=hddmon daemon
 Requires=udev.service
+Wants=docker.service
 
 [Service]
-ExecStart=/etc/hddmon/env/bin/python3.8 /etc/hddmon/hddmond.py
+ExecStart=python3.8 /etc/hddmon/hddmond.py
 Restart=always
 User=root
 Group=root

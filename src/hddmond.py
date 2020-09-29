@@ -1,4 +1,4 @@
-#!./env/bin/python3.8
+#!/usr/bin/python3.8
 from hddmondtools.hddmanager import ListModel
 from hddmondtools.websocket import WebsocketServer
 from hddmondtools.multiproc_socket import MultiprocSock
@@ -19,7 +19,7 @@ class App:
         self.mps.register_command('shorttest', self.list.shortTestBySerial)
         self.mps.register_command('longtest', self.list.longTestBySerial)
         self.mps.register_command('aborttest', self.list.abortTestBySerial)
-        self.mps.register_command('getimages', self.list.sendImages)
+        self.mps.register_command('getimages', self.image_shim)
         self.mps.register_command('image', self.list.imageBySerial)
         self.mps.register_command('aborttask', self.list.abortTaskBySerial)
         self.mps.register_command('hdds', self.list.sendHdds)
