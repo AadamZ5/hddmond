@@ -7,7 +7,7 @@ import datetime
 import enum
 from .pciaddress import PciAddress
 from .test import Test, TestResult
-from .task import EraseTask, ImageTask, TaskQueue
+from .task import EraseTask, ImageTask, TaskQueue, Task
 from .notes import Notes
 import proc.core
 
@@ -22,18 +22,6 @@ class HealthStatus(enum.Enum):
     Passing = 4,
     Warn = 5,
     Unknown = 6,
-
-    def __str__(self):
-        return self.name
-
-class TaskStatus(enum.Enum):
-    Idle = 0,
-    Erasing = 1,
-    External = 2,
-    Error = 3,
-    Imaging = 4,
-    ShortTesting = 4,
-    LongTesting = 5,
 
     def __str__(self):
         return self.name
@@ -75,7 +63,6 @@ class Hdd:
         self._smart = pySMART.Device(self.node)
         self.port = None
         self.TaskQueue = TaskQueue(continue_on_error=False, task_change_callback=self._task_changed)
-        self.CurrentTaskStatus = TaskStatus.Idle
         self.Size = self._smart.capacity
         self.notes = Notes()
         self.seen = 0
@@ -90,8 +77,10 @@ class Hdd:
 
             self.capacity = size
         except AttributeError:
+            self.capacity = None
             pass
         except Exception:
+            self.capacity = None
             print("Exception occurred while parsing capacity of drive " + self.serial + ". This drive may not function properly")
 
         self._smart_last_call = time.time()
@@ -111,7 +100,7 @@ class Hdd:
                 if not (self.status == HealthStatus.ShortTesting) or (self.status == HealthStatus.LongTesting):
                     self.status = HealthStatus.LongTesting #We won't know if this is a short or long test, so assume it can be long for sake of not pissing off the user.
                     t = Test(self._smart, Test.Existing, callback=self._testCompletedCallback)
-                    self.TaskQueue.AddTask(t, self._longtest)
+                    self.TaskQueue.AddTask(t)
                 else:
                     pass
             
@@ -153,6 +142,10 @@ class Hdd:
         else:
             return False
 
+    def add_task(self, task: Task):
+        self.TaskQueue.AddTask(task)
+        pass
+
     def _task_changed(self, *args, **kw):
         for c in self._task_changed_callbacks:
             if c != None and callable(c):
@@ -176,64 +169,39 @@ class Hdd:
             self.status = HealthStatus.Warn
 
         self._taskCompletedCallback(0)
-    
-    def _shorttest(self):
-        self.status = HealthStatus.ShortTesting
-        self.CurrentTaskStatus = TaskStatus.ShortTesting
-
-    def _longtest(self):
-        self.status = HealthStatus.LongTesting
-        self.CurrentTaskStatus = TaskStatus.LongTesting
 
     def ShortTest(self) -> None:
         #self.status = HealthStatus.ShortTesting
-        t = Test(self._smart, 'short', pollingInterval=5, callback=self._testCompletedCallback)
-        self.TaskQueue.AddTask(t, preexec_cb=self._shorttest)
+        t = Test(self, 'short', pollingInterval=5)
+        self.TaskQueue.AddTask(t)
 
     def LongTest(self) -> None:
         #self.status = HealthStatus.ShortTesting
-        t = Test(self._smart, 'long', pollingInterval=5, callback=self._testCompletedCallback)
-        self.TaskQueue.AddTask(t, preexec_cb=self._longtest)
+        t = Test(self, 'long', pollingInterval=5)
+        self.TaskQueue.AddTask(t)
 
     def _taskCompletedCallback(self, returncode):
-        if(returncode != 0):
-            self.CurrentTaskStatus = TaskStatus.Error
-        else:
-            self.CurrentTaskStatus = TaskStatus.Idle
-
-    def _erasing(self):
-        self.CurrentTaskStatus = TaskStatus.Erasing
+        pass
 
     def Erase(self, callback=None) -> bool:
         if not self.TaskQueue.Full:
-            t = EraseTask(self.node, self.Size.replace('GB', '').strip(), callback=self._taskCompletedCallback)
-            r = self.TaskQueue.AddTask(t, preexec_cb=self._erasing)
+            t = EraseTask(self, callback=self._taskCompletedCallback)
+            r = self.TaskQueue.AddTask(t)
             return r #We probably queued the task sucessfully
         else:
             return False #Queue is full
 
-    def _imaging(self):
-        self.CurrentTaskStatus = TaskStatus.Imaging
-
     def Image(self, image, callback=None) -> bool:
         if not self.TaskQueue.Full:
-            t = ImageTask(image, self.name, self._taskCompletedCallback)
-            self.TaskQueue.AddTask(t, preexec_cb=self._imaging)
+            t = ImageTask(self, image, self._taskCompletedCallback)
+            self.TaskQueue.AddTask(t)
             return True #We queued the task sucessfully
         else:
             return False #Queue is full, wait.
     
     def GetTaskProgressString(self) -> str:
-        if(self.TaskQueue.CurrentTask != None) and (self.CurrentTaskStatus != TaskStatus.Idle):
-            if(self.CurrentTaskStatus == TaskStatus.Error):
-                return "Err: " + str(self.TaskQueue.CurrentTask._returncode)
-            elif(self.TaskQueue.CurrentTask.Finished):
-                return "Done"
-            elif(self.TaskQueue.CurrentTask != None):
-                return self.TaskQueue.CurrentTask.ProgressString
-            else:
-                return "Busy"
-                
+        if(self.TaskQueue.CurrentTask != None):
+            return self.TaskQueue.CurrentTask.ProgressString
         else:
             return "Idle"
 

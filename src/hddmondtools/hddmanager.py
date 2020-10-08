@@ -6,8 +6,9 @@ import multiprocessing.connection as ipc
 import proc.core
 import pyudev
 from pySMART import Device
-from hddmontools.hdd import Hdd, HealthStatus, TaskStatus
-from hddmontools.task import ExternalTask
+from hddmontools.hdd import Hdd
+from hddmontools.task import ExternalTask, Task, ImageTask, EraseTask
+from hddmontools.test import Test
 from hddmontools.image import DiskImage, Partition
 import pySMART
 import time
@@ -21,6 +22,8 @@ from .multiproc_socket import MultiprocSock
 from .hddmon_dataclasses import HddData, TaskQueueData, TaskData, ImageData
 from .genericdatabase import GenericDatabase
 
+import inspect
+
 class ListModel:
     """
     Data model that holds hdd list.
@@ -30,6 +33,7 @@ class ListModel:
         self.updateInterval = 3
         self.task_change_outside_callback = taskChangedCallback
         self.hdds = []
+        self.task_types = self.load_task_types() # Should be {task_name: task_obj}
         self.blacklist_hdds = self.load_blacklist_file()
         self._udev_context = pyudev.Context()
         self.monitor = pyudev.Monitor.from_netlink(self._udev_context)
@@ -43,6 +47,16 @@ class ListModel:
         if self.database != None:
             if( not self.database.connect()):
                 self.database = None
+
+    def load_task_types(self):
+        #TODO: DO THIS
+        #Get tasks from task py file? Somehow do dynamic tasks? What do we do?
+
+        return {
+            'Test': Test,
+            'EraseTask': EraseTask,
+            'ImageTask': ImageTask
+        }
 
     def task_change_callback(self, hdd: Hdd, *args, **kwargs):
 
@@ -161,6 +175,39 @@ class ListModel:
                 hdddata.append(HddData.FromHdd(h))
             return {'hdds': hdddata}
         return {'error': 'No hdd(s) found for constraints!'}
+
+    def taskBySerial(self, *args, **kw):
+        l = threading.Lock()
+        l.acquire()
+        serials = []
+        task_obj = None
+        parameter_data = dict()
+        if('serials' in kw):
+            serials = kw['serials']
+
+        if('parameters' in kw):
+            parameter_data = kw['parameters']
+
+        if('task' in kw):
+            task_name = kw['task']
+            if not (task_name in self.task_types.keys()):
+                return False
+            task_obj = self.task_types[task_name]
+            parameter_schema = Task.GetTaskParameterSchema(task_obj)
+            if(parameter_schema != None and len(parameter_data.keys()) <= 0):
+                return {'need_parameters': parameter_schema, 'serials': serials, 'task': task_name}
+        else:
+            return {'error': 'No task was specified!'}
+
+        for h in self.hdds:
+            if h.serial in serials:
+                t = task_obj(h, **parameter_data)
+                h.add_task(t)
+                print("Queued task {0} on {1}".format(t.name, h.serial))
+            
+        l.release()
+        return True
+        pass
 
     def eraseBySerial(self, *args, **kw): #Starts an erase operation on the drives matching the input serials
         r = False
@@ -334,7 +381,7 @@ class ListModel:
         while self._loopgo:
             busy = False
             for hdd in self.hdds:
-                if not (hdd.status == HealthStatus.LongTesting) or (hdd.status == HealthStatus.ShortTesting):
+                if not (isinstance(hdd.TaskQueue.CurrentTask, Test)): #Check if the current task is a test or not
                     if(time.time() - hdd._smart_last_call > smart_coldcall_interval): #If we're not testing, occasionally check to see if a test was started externally.
                         #print("smart cold-call to " + str(hdd.serial))
                         try:
@@ -342,13 +389,12 @@ class ListModel:
                             hdd._smart_last_call = time.time()
                         except Exception as e:
                             print("Exception raised!:" + str(e))
-                if(hdd.CurrentTaskStatus != TaskStatus.Idle): #If there is a task operating on the drive's data
+                if(hdd.TaskQueue.CurrentTask != None): #If there is a task operating on the drive's data
                     busy = True
                 else:
                     task = self.findProcAssociated(hdd.name)
                     if(task != None):
-                        hdd.TaskQueue.AddTask(ExternalTask(task.pid, processExitCallback=hdd._taskCompletedCallback))
-                        hdd.CurrentTaskStatus = TaskStatus.External
+                        hdd.TaskQueue.AddTask(ExternalTask(hdd, task.pid, processExitCallback=hdd._taskCompletedCallback))
             self.stuffRunning = busy
             time.sleep(1)
 
@@ -388,10 +434,9 @@ class ListModel:
 
         t = self.findProcAssociated(hdd.name)
         if(t != None):
-            hdd.TaskQueue.AddTask(ExternalTask(t.pid, processExitCallback=hdd._taskCompletedCallback))
-            hdd.CurrentTaskStatus = TaskStatus.External
+            hdd.TaskQueue.AddTask(ExternalTask(hdd, t.pid, processExitCallback=hdd._taskCompletedCallback))
         self.hdds.append(hdd)
-        if(self.AutoShortTest == True) and (hdd.status != HealthStatus.ShortTesting and hdd.status != HealthStatus.LongTesting):
+        if(self.AutoShortTest == True) and (not isinstance(hdd.TaskQueue.CurrentTask, Test)):
             hdd.ShortTest()
         hdd.AddTaskChangeCallback(self.task_change_callback)
 
@@ -441,6 +486,8 @@ class ListModel:
         return None
 
     def start(self):
+        
+
         self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
         self.observer.start()
         self._loopgo = True
@@ -458,17 +505,13 @@ class ListModel:
         for h in self.hdds:
             print("Stopping tasks on {0}".format(h.serial))
             h.TaskQueue.Pause = True
-            if(h.CurrentTaskStatus != TaskStatus.Idle) and (h.CurrentTaskStatus != TaskStatus.Error):
-                if(h.CurrentTaskStatus == TaskStatus.External) or (h.CurrentTaskStatus == TaskStatus.LongTesting) or (h.CurrentTaskStatus == TaskStatus.ShortTesting):
+            if(h.TaskQueue.CurrentTask != None) and (h.TaskQueue.Error != True):
+                if(isinstance(h.TaskQueue.CurrentTask, ExternalTask)) or (isinstance(h.TaskQueue.CurrentTask, Test)):
                     print("Detaching task " + str(h.TaskQueue.CurrentTask.name) + " on " + h.serial)
                     h.TaskQueue.CurrentTask.detach()
                 else:
                     print("Aborting task " + str(h.TaskQueue.CurrentTask.name) + " (PID: " + str(h.TaskQueue.CurrentTask.PID) + ") on " + h.serial)
                     h.TaskQueue.CurrentTask.abort(wait=True) #Wait for abortion so database entries can be entered before we disconnect the database.
-            if(h.status == HealthStatus.LongTesting or h.status == HealthStatus.ShortTesting) and h.test != None:
-                print("Detaching from SMART test on " + h.serial)
-                if h.test != None:
-                    h.test.detach()
 
         print("Disconnecting database...")
         if self.database != None:

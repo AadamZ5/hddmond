@@ -20,6 +20,35 @@ class Test(Task):
     Long = 'long'
     Existing = 'existing'
 
+    parameter_schema = """{
+    "default": {},
+    "description": "The parameters for the Test task",
+    "examples": [
+        {
+            "test_type": "Short"
+        }
+    ],
+    "required": [
+        "test_type"
+    ],
+    "title": "Test task parameters",
+    "properties": {
+        "test_type": {
+            "default": "Short",
+            "description": "The duration of the SMART test for the selected drive(s)",
+            "examples": [
+                "short"
+            ],
+            "enum": [
+                "Short",
+                "Long"
+            ],
+            "title": "Test type"
+        }
+    },
+    "additionalProperties": true
+}"""
+
     @property
     def testing(self):
         return self.device._test_running
@@ -40,9 +69,9 @@ class Test(Task):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    def __init__(self, smart_device: pySMART.Device, testType, pollingInterval=5, callback=None, progressCallback=None):
-        self.device = smart_device
-        self.testType = testType
+    def __init__(self, hdd, test_type: str="short", pollingInterval=5, callback=None, progressCallback=None):
+        self.device = hdd._smart
+        self.test_type = test_type
         self.result = None
         self._progress = 0
         self._progressCallback = progressCallback
@@ -52,12 +81,12 @@ class Test(Task):
         self._pollingInterval = pollingInterval
         self._testing = True
         self._finished = False
-        if(self.testType == Test.Existing):
+        if(self.test_type == Test.Existing):
             self._testingThread = threading.Thread(target=self._loose_test, args=(pollingInterval,))
         else:
-            self._testingThread = threading.Thread(target=self._captive_test, args=(self.testType, pollingInterval,))
+            self._testingThread = threading.Thread(target=self._captive_test, args=(self.test_type, pollingInterval,))
         self._started = False
-        super(Test, self).__init__("Long test" if self.testType == Test.Long else ("Short test" if self.testType == Test.Short else "Test"))
+        super(Test, self).__init__("Long test" if self.test_type.lower() == Test.Long else ("Short test" if self.test_type.lower() == Test.Short else "Test"), hdd)
         self._progressString = "Test"
         self._callback = callback
         self._progress_cb = None
@@ -65,10 +94,10 @@ class Test(Task):
 
     def start(self, progress_callback=None):
         if not self._started:
-            if(self.testType == Test.Existing):
+            if(self.test_type == Test.Existing):
                 self.notes.add("Monitoring existing test on storage device.", note_taker="hddmond")
             else:
-                self.notes.add("Started " + self.testType + " SMART test on storage device.", note_taker="hddmond")
+                self.notes.add("Started " + self.test_type + " SMART test on storage device.", note_taker="hddmond")
             self._progress_cb = progress_callback
             self._testingThread.start()
             self._started = True

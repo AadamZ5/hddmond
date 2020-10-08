@@ -6,6 +6,7 @@ import pickle
 import secrets
 import datetime
 import subprocess
+from injectable import injectable
 
 class Partition:
     def __init__(self, index, startSector, endSector, filesystem, type_, flags=None):
@@ -181,6 +182,7 @@ class ImageUpload:
     def reset_expire_time(self, expire_in:datetime.timedelta = datetime.timedelta(seconds=30)):
         self.expire_datetime = datetime.datetime.now() + expire_in
 
+@injectable(singleton=True)
 class ImageManager:
     def __init__(self):
         self._image_data_path = r'/etc/hddmon/images_data/images/'

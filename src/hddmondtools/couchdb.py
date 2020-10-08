@@ -2,6 +2,7 @@ from .genericdatabase import GenericDatabase
 from cloudant import CouchDB
 from .hddmon_dataclasses import HddData, TaskData, AttributeData, SmartData
 import datetime
+from injectable import injectable, injectable_factory
 
 class CouchDatabase(GenericDatabase):
     def __init__(self, address_with_port, user, passw):
@@ -137,3 +138,7 @@ class CouchDatabase(GenericDatabase):
             r_hdd['smart_captures'] = []
         r_hdd['smart_captures'].append(sc_doc['_id'])
         r_hdd.save()
+
+@injectable_factory(CouchDatabase)
+def CouchDatabaseFactory():
+    pass

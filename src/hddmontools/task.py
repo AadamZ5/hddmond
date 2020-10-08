@@ -9,14 +9,34 @@ import time
 from pySMART import Device
 from .image import DiskImage, Partition
 from .notes import Notes
+from .image import ImageManager
 import datetime
+from injectable import Autowired, autowired
 
 class TaskResult(enum.Enum):
     FINISHED = 1,
     ERROR = 0,
 
 class Task:
-    def __init__(self, taskName):
+
+    @staticmethod
+    def GetTaskParameterSchema(task):
+        s: str = None
+
+        if task.parameter_schema == None:
+            return None
+
+        if callable(task.parameter_schema):
+            s = task.parameter_schema(task)
+        else:
+            s = str(task.parameter_schema)
+        return s
+            
+
+    """_parameter_schema holds JSON Schema that defines the properties needed for a task to initialize. This can be callable, or just a static property."""
+    parameter_schema = None
+
+    def __init__(self, taskName, hdd):
         self.name = taskName
         self._progressString = self.name
         self._callback = None
@@ -90,6 +110,15 @@ class TaskQueue:
         self._taskchanged_cb(action='pausechange', data={'paused': self._pause})
 
     @property
+    def Error(self):
+        return self._error
+
+    @Error.setter
+    def Error(self, value: bool):
+        self._error = value
+        self._taskchanged_cb(action='errorchange', data={'error': self._error})
+
+    @property
     def Full(self):
         return len(self.Queue) >= self.maxqueue
 
@@ -100,6 +129,7 @@ class TaskQueue:
         self.between_task_wait = between_task_wait
         self.continue_on_error = continue_on_error
         self._pause = False
+        self._error = False
         self._queue_thread = None
         if(queue_preset == None):
             queue_preset = []
@@ -142,8 +172,10 @@ class TaskQueue:
         if(self._currentcb != None and callable(self._currentcb)): #Call the original callback associated with the completed task
             self._currentcb(returncode)
 
-        if(int(returncode) != 0 and self.continue_on_error == False):
-            self.Pause = True
+        if(int(returncode) != 0):
+            self.Error = True
+            if(self.continue_on_error == False):
+                self.Pause = True
 
         self.CurrentTask = None
         self._currentcb = None
@@ -285,6 +317,8 @@ class TaskQueue:
 
 class ExternalTask(Task):
 
+    parameter_schema = None
+
     @property
     def Finished(self):
         return self._finished
@@ -301,14 +335,14 @@ class ExternalTask(Task):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    def __init__(self, pid, processExitCallback=None, pollingInterval=5, start=False):
+    def __init__(self, hdd,  pid, processExitCallback=None, pollingInterval=5, start=False):
         self._procview = proc.core.Process.from_pid(pid)
         self._PID = self._procview.pid
         self._finished = False
         self._poll = True
         self._pollingInterval = pollingInterval
         self._pollingThread = threading.Thread(target=self._pollProcess, name=str(self.PID) + "_pollingThread")
-        super(ExternalTask, self).__init__("External")
+        super(ExternalTask, self).__init__("External", hdd)
         self.returncode = 0
         self._callback = processExitCallback
         self._progressString = "PID " + str(self.PID)
@@ -317,7 +351,7 @@ class ExternalTask(Task):
             self.start()
         
     def start(self, progress_callback=None):
-        if(self._pollingThread.isAlive):
+        if(self._pollingThread.is_alive()):
             return False
         else:
             self.time_started = datetime.datetime.now(datetime.timezone.utc)
@@ -326,9 +360,10 @@ class ExternalTask(Task):
 
     def _pollProcess(self):
         while self._poll == True and self._finished == False:
-            if(self._procview.is_alive == False):
+            if(self._procview.is_alive == False): # is_alive is a generated bool, evaluating every time we check it. This should be a real-time status. 
                 self._finished = True
-            time.sleep(self._pollingInterval)
+            else:
+                time.sleep(self._pollingInterval)
 
         self.notes.add("The process has exited.", note_taker="hddmond")
         self.time_ended = datetime.datetime.now(datetime.timezone.utc)
@@ -362,6 +397,9 @@ class ExternalTask(Task):
         self.notes.add("The process was detatched from the hddmond monitor.", note_taker="hddmond")
     
 class EraseTask(Task):
+
+    parameter_schema = None
+
     def __getstate__(self):
         state = self.__dict__.copy()
         state['_pollingThread'] = None
@@ -371,24 +409,24 @@ class EraseTask(Task):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    def __init__(self, node, capacity=0, pollingInterval = 5, callback=None):
+    def __init__(self, hdd, pollingInterval = 5, callback=None):
         self._subproc = None
         self._procview = None
         self._PID = None
         self._diskusage = None
         self._cap_in_bytes = None
         self._progress = 0
-        self.node = node
-        self.Capacity = int(capacity)
+        self.node = hdd.node
+        self.Capacity = int(hdd.Size.replace('GB', '').strip())
         self._monitor = True
         self._started = False
         self._returncode = None
         self._pollingInterval = pollingInterval
-        self._pollingThread = threading.Thread(target=self._monitorProgress, name=str(node) + "_eraseTask")
+        self._pollingThread = threading.Thread(target=self._monitorProgress, name=str(self.node) + "_eraseTask")
         self._subproc = None
         self._PID = None
         self._procview = None
-        super(EraseTask, self).__init__("Erase")
+        super(EraseTask, self).__init__("Erase", hdd)
         self._callback = callback
         self._progress_cb = None
         
@@ -471,6 +509,45 @@ class EraseTask(Task):
 
 class ImageTask(Task):
 
+    @staticmethod
+    @autowired
+    def parameter_schema(task, i_s: Autowired(ImageManager), **kw):
+
+        images_comma_separated = ', '.join('"{0}"'.format(str(image.name)) for image in i_s.discovered_images)
+    
+        schema = """{{
+    "default": {{
+        "image_name": null
+    }},
+    "description": "Parameters that are needed for the Image task",
+    "examples": [
+        {{
+            "image_name": "hp_g1_26k"
+        }}
+    ],
+    "required": [
+        "image_name"
+    ],
+    "title": "Image task parameters",
+    "properties": {{
+        "image_name": {{
+            "default": "",
+            "description": "This is the name of the data image that should be applied to the HDD(s) in question.",
+            "examples": [
+                "hp_g1_26k"
+            ],
+            "title": "Image name",
+            "enum": [
+                {0}
+            ],
+            "type": "string"
+        }}
+    }},
+    "additionalProperties": true
+}}""".format(images_comma_separated)
+        return schema
+        
+
     def __getstate__(self):
         state = self.__dict__.copy()
         state['_pollingThread'] = None
@@ -488,10 +565,21 @@ class ImageTask(Task):
     def Finished(self):
         return self._returncode != None
 
-    def __init__(self, image: DiskImage, diskname, callback=None, pollingInterval=5):
-        self._image = image
+    @autowired
+    def __init__(self, hdd, i_s: Autowired(ImageManager), **kw):
+
+        image_name = kw.get("image_name", None)
+        self._image = None
+        for dimage in i_s.discovered_images:
+            if dimage.name == image_name:
+                self._image = dimage
+                break;
+        
+        if self._image == None:
+            raise Exception("No imaged matched {0}!".format(image_name))
+
         #self._partitions = image.partitions.copy()
-        self._diskname = diskname
+        self._diskname = hdd.node
         self._subproc = None
         self._PID = None
         self._returncode = None
@@ -501,10 +589,10 @@ class ImageTask(Task):
         self._cloning = False
         self._checking = False
         self._poll = True
-        self._pollingInterval = pollingInterval
-        self._pollingThread = threading.Thread(target=self._monitor, name=str(diskname) + "_cloneTask")
-        super(ImageTask, self).__init__("Image " + self._image.name)
-        self._callback = callback
+        self._pollingInterval = kw.get("pollingInterval", 5)
+        self._pollingThread = threading.Thread(target=self._monitor, name=str(self._diskname) + "_cloneTask")
+        super(ImageTask, self).__init__("Image " + self._image.name, hdd)
+        self._callback = kw.get("callback", None)
         self._progress_cb = None
         
     def start(self, progress_callback=None):

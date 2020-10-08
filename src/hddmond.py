@@ -1,4 +1,7 @@
 #!/usr/bin/python3.8
+from injectable import load_injection_container, Autowired, autowired
+load_injection_container("./")
+
 from hddmondtools.hddmanager import ListModel
 from hddmondtools.websocket import WebsocketServer
 from hddmondtools.multiproc_socket import MultiprocSock
@@ -7,32 +10,30 @@ import signal
 from hddmondtools.couchdb import CouchDatabase
 from hddmontools.image import ImageManager, CustomerImage, DiskImage
 
-
 class App:
-    def __init__(self):
-        self.images = ImageManager()
+    @autowired
+    def __init__(self, image_manager: Autowired(ImageManager)):
+        self.images = image_manager
         self.list = ListModel(taskChangedCallback = self.task_changed_cb, database=CouchDatabase("http://192.168.1.2:5984", "vuser", "Velocity_2017!"))
         self.mps = MultiprocSock()
         self.ws = WebsocketServer()
 
+        #TODO: Remove MultiProcess socket and use only websocket
         self.mps.register_command('erase', self.list.eraseBySerial)
         self.mps.register_command('shorttest', self.list.shortTestBySerial)
         self.mps.register_command('longtest', self.list.longTestBySerial)
         self.mps.register_command('aborttest', self.list.abortTestBySerial)
         self.mps.register_command('getimages', self.image_shim)
         #self.mps.register_command('image', self.list.imageBySerial)
+        self.mps.register_command('addtask', self.list.taskBySerial)
         self.mps.register_command('aborttask', self.list.abortTaskBySerial)
         self.mps.register_command('hdds', self.list.sendHdds)
         self.mps.register_command('modifyqueue', self.list.modifyTaskQueue)
         self.mps.register_command('pausequeue', self.list.pauseQueue)
         self.mps.register_command('blacklist', self.list.blacklist)
         
-        self.ws.register_command('erase', self.list.eraseBySerial)
-        self.ws.register_command('shorttest', self.list.shortTestBySerial)
-        self.ws.register_command('longtest', self.list.longTestBySerial)
-        self.ws.register_command('aborttest', self.list.abortTestBySerial)
-        self.ws.register_command('getimages', self.image_shim)
         #self.ws.register_command('image', self.list.imageBySerial)
+        self.ws.register_command('addtask', self.list.taskBySerial)
         self.ws.register_command('aborttask', self.list.abortTaskBySerial)
         self.ws.register_command('hdds', self.list.sendHdds)
         self.ws.register_command('modifyqueue', self.list.modifyTaskQueue)
