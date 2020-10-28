@@ -99,7 +99,7 @@ class Hdd:
                 #self.testProgress = self._smart._test_progress
                 if not (self.status == HealthStatus.ShortTesting) or (self.status == HealthStatus.LongTesting):
                     self.status = HealthStatus.LongTesting #We won't know if this is a short or long test, so assume it can be long for sake of not pissing off the user.
-                    t = Test(self._smart, Test.Existing, callback=self._testCompletedCallback)
+                    t = Test(self, Test.Existing, callback=self._testCompletedCallback)
                     self.TaskQueue.AddTask(t)
                 else:
                     pass

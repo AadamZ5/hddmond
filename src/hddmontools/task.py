@@ -19,6 +19,8 @@ class TaskResult(enum.Enum):
 
 class Task:
 
+    display_name = "Task"
+
     @staticmethod
     def GetTaskParameterSchema(task):
         s: str = None
@@ -292,8 +294,8 @@ class TaskQueue:
         '''
         lastpause = self.Pause
         self.Pause = True
-        if index < 0 or index > self.maxqueue-1:
-            return
+        if index < 0 or index > self.maxqueue-1 or index > len(self.Queue)-1:
+            return False
         del self.Queue[index]
         self.Pause = lastpause
         self._taskchanged_cb(action='tasklistmod', data={'taskqueue': self})
@@ -316,6 +318,8 @@ class TaskQueue:
             self._task_change_callback(*args, **kw)
 
 class ExternalTask(Task):
+
+    display_name = "External Task"
 
     parameter_schema = None
 
@@ -397,6 +401,8 @@ class ExternalTask(Task):
         self.notes.add("The process was detatched from the hddmond monitor.", note_taker="hddmond")
     
 class EraseTask(Task):
+
+    display_name = "Erase"
 
     parameter_schema = None
 
@@ -508,6 +514,8 @@ class EraseTask(Task):
             self._callback(self._returncode)
 
 class ImageTask(Task):
+
+    display_name = "Image"
 
     @staticmethod
     @autowired
@@ -668,7 +676,7 @@ class ImageTask(Task):
             self.notes.add("Finished imaging " + self._image.name + ".", note_taker="hddmond")
         else:
             self.notes.add("Failed imaging " + self._image.name + ".", note_taker="hddmond")
-            self.notes.add("stderr:\n" + str(self.err), note_taker="hddmond")
+            self.notes.add("stderr:\n" + str(self.err if self.err else "Unkown error"), note_taker="hddmond")
 
         if(self._callback != None and callable(self._callback)):
             self._callback(self._returncode)
@@ -679,11 +687,13 @@ class ImageTask(Task):
         except TimeoutExpired:
             pass
         self._returncode = self._subproc.poll()
-        if(self._returncode != None):
+        if(self._returncode != None): #Return code should be None until the process has exited.
             try:
                 self.err = self._subproc.stderr.read()
                 self.out = self._subproc.stdout.read()
             except ValueError as e:
+                self.err = None
+                self.out = None
                 pass
             self._poll = False  
             

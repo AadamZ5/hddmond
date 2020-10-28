@@ -20,6 +20,8 @@ class Test(Task):
     Long = 'long'
     Existing = 'existing'
 
+    display_name = "Test"
+
     parameter_schema = """{
     "default": {},
     "description": "The parameters for the Test task",

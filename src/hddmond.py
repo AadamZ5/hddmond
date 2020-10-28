@@ -1,6 +1,6 @@
 #!/usr/bin/python3.8
 from injectable import load_injection_container, Autowired, autowired
-load_injection_container("./")
+load_injection_container("./") #For the `injectable` module. Scans files for injectable items.
 
 from hddmondtools.hddmanager import ListModel
 from hddmondtools.websocket import WebsocketServer
@@ -33,6 +33,7 @@ class App:
         self.mps.register_command('blacklist', self.list.blacklist)
         
         #self.ws.register_command('image', self.list.imageBySerial)
+        self.ws.register_command('gettasks', self.list.sendTaskTypes)
         self.ws.register_command('addtask', self.list.taskBySerial)
         self.ws.register_command('aborttask', self.list.abortTaskBySerial)
         self.ws.register_command('hdds', self.list.sendHdds)

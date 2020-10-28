@@ -176,6 +176,14 @@ class ListModel:
             return {'hdds': hdddata}
         return {'error': 'No hdd(s) found for constraints!'}
 
+    def sendTaskTypes(self, *args, **kw):
+        type_display_dict = {}
+        for tname, ttype in self.task_types.items():
+            
+            type_display_dict[tname] = ttype.display_name
+        
+        return type_display_dict
+
     def taskBySerial(self, *args, **kw):
         l = threading.Lock()
         l.acquire()
@@ -388,7 +396,7 @@ class ListModel:
                             hdd.UpdateSmart()
                             hdd._smart_last_call = time.time()
                         except Exception as e:
-                            print("Exception raised!:" + str(e))
+                            print("Exception raised during SMART refresh!: " + str(e))
                 if(hdd.TaskQueue.CurrentTask != None): #If there is a task operating on the drive's data
                     busy = True
                 else:

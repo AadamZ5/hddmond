@@ -6,12 +6,12 @@ from .genericserver import GenericServer
 import jsonpickle
 
 
-class ClientDataMulticaster:
+class ClientDataMulticaster: #This is used to keep track of all clients connected, to allow multicasting. 
     def __init__(self):
         self._client_data = {} #{client: data[]}
 
     def register(self, address):
-        print("Registering websocket at " + str(address) + " to broadcast list")
+        #print("Registering websocket at " + str(address) + " to broadcast list")
         self._client_data.update({address: []})
         return self._client_data[address]
 
@@ -20,7 +20,7 @@ class ClientDataMulticaster:
             self._client_data[k].append(data)
 
     def unregister(self, address):
-        print("Unregistering websocket at " + str(address) + " from broadcast list")
+        #print("Unregistering websocket at " + str(address) + " from broadcast list")
         try:
             del self._client_data[address]
         except KeyError:
@@ -68,9 +68,9 @@ class WebsocketServer(GenericServer):
                 data = m.get('data', dict())
 
                 if command != None:
-                    r = self.find_action(str(command), **data)
-                    r_json = jsonpickle.dumps(r, unpicklable=False, make_refs=False)
-                    await ws.send(r_json)
+                    r = self.find_action(str(command), **data) #The main application will register functions to various commands. See if we can find one registered for the command sent.
+                    r_json = jsonpickle.dumps(r, unpicklable=False, make_refs=False) #Note, if no function is found, we will just JSON pickle `None` which will just send a `null` back to the client.
+                    await ws.send(r_json) 
                 else:
                     send = jsonpickle.dumps({"error": "No command to process!"}, unpicklable=False, make_refs=False)
                     await ws.send(send)

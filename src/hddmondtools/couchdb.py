@@ -93,7 +93,9 @@ class CouchDatabase(GenericDatabase):
             'name': task.name,
             'notes': notes_dict_list,
             'return_code': task.return_code,
-            'hdd': serial
+            'hdd': serial,
+            'time_started': task.time_started,
+            'time_ended': task.time_ended
         }
 
         task_doc = self.taskdb.create_document(task_data)
@@ -138,7 +140,3 @@ class CouchDatabase(GenericDatabase):
             r_hdd['smart_captures'] = []
         r_hdd['smart_captures'].append(sc_doc['_id'])
         r_hdd.save()
-
-@injectable_factory(CouchDatabase)
-def CouchDatabaseFactory():
-    pass
