@@ -1,2 +1,0 @@
-FROM busybox:latest
-ENTRYPOINT ["httpd", "-f", "-v", "-h", "/www/"]

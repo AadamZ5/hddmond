@@ -30,19 +30,19 @@ class ListModel:
     """
 
     def __init__(self, taskChangedCallback = None, database: GenericDatabase = None):
-        self.updateInterval = 3
-        self.task_change_outside_callback = taskChangedCallback
-        self.hdds = []
-        self.task_types = self.load_task_types() # Should be {task_name: task_obj}
-        self.blacklist_hdds = self.load_blacklist_file()
-        self._udev_context = pyudev.Context()
-        self.monitor = pyudev.Monitor.from_netlink(self._udev_context)
-        self.monitor.filter_by(subsystem='block', device_type='disk')
-        self.PortDetector = hddmontools.portdetection.PortDetection()
-        self.AutoShortTest = False
-        self._loopgo = True
-        self.stuffRunning = False
-        self.database = database
+        self.updateInterval = 3 #Interval for scanning for running SMART tests
+        self.task_change_outside_callback = taskChangedCallback #callback for when any hdd's task stuff calls back
+        self.hdds = [] #The list of hdd's
+        self.task_types = self.load_task_types() # Should be {task_name: task_obj}  #The task class's name, and its constructor
+        self.blacklist_hdds = self.load_blacklist_file() #The list of hdd's to ignore when seen
+        self._udev_context = pyudev.Context() #The UDEV context. #TODO: Autowire?
+        self.monitor = pyudev.Monitor.from_netlink(self._udev_context) #The monitor that watches for UDEV object actions (uses C bindings)
+        self.monitor.filter_by(subsystem='block', device_type='disk') #Filter the incoming object actions
+        self.PortDetector = hddmontools.portdetection.PortDetection() #Port detection
+        self.AutoShortTest = False #Do auto short test on new detected drives?
+        self._loopgo = True #Condition for the SMART scan loop
+        self.stuffRunning = False #Is stuff running? I don't know
+        self.database = database #The database #TODO: Autowire!
 
         if self.database != None:
             if( not self.database.connect()):

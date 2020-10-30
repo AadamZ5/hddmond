@@ -1,7 +1,6 @@
 #!/usr/bin/python3.8
 import os, sys
 os.chdir('/etc/hddmon')
-print(os.getcwd())
 sys.path.append('/etc/hddmon')
 import subprocess
 import multiprocessing.connection as ipc

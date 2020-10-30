@@ -224,3 +224,7 @@ class Hdd:
             t = "HDD"
         s = t + " " + str(self.serial) + " at " + str(self.node)
         return "<" + s + ">"
+
+from multiprocessing.managers import BaseManager
+class HddManager(BaseManager): pass
+HddManager.register('Hdd', Hdd)
