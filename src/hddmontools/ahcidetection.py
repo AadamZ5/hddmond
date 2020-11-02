@@ -1,5 +1,6 @@
 import subprocess
-from .pciaddress import PciAddress
+from hddmontools.pciaddress import PciAddress
+from injectable import injectable
 
 class AhciDevice():
     def __init__(self):
@@ -35,7 +36,7 @@ class AhciDevice():
 
                 self.PciAddress = PciAddress(seg,bus,dev,fun)
 
-
+@injectable(singleton=True)
 class AhciDetective():
     def __init__(self):
         self.AhciDevice = AhciDevice()

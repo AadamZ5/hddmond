@@ -1,16 +1,17 @@
 #!/usr/bin/python3
 
-from .ahcidetection import *
-from .sasdetection import *
 import subprocess
-from .pciaddress import PciAddress
-from injectable import injectable
+
+from injectable import injectable, inject
+from hddmontools.pciaddress import PciAddress
+from hddmontools.ahcidetection import AhciDetective
+from hddmontools.sasdetection import SasDetective
 
 @injectable(singleton=True)
 class PortDetection():
     def __init__(self):
-        self.ahcidet = AhciDetective()
-        self.sasdet = SasDetective()
+        self.ahcidet = inject(AhciDetective)
+        self.sasdet = inject(SasDetective)
 
         lspci = subprocess.run(['lspci'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         lines = str(lspci.stdout).splitlines()

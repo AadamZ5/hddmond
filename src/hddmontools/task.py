@@ -10,8 +10,9 @@ from pySMART import Device
 from .image import DiskImage, Partition
 from .notes import Notes
 from .image import ImageManager
+from .task_service import TaskService
 import datetime
-from injectable import Autowired, autowired
+from injectable import Autowired, autowired, injectable
 
 class TaskResult(enum.Enum):
     FINISHED = 1,
@@ -399,6 +400,7 @@ class ExternalTask(Task):
         except RuntimeError:
             pass
         self.notes.add("The process was detatched from the hddmond monitor.", note_taker="hddmond")
+
     
 class EraseTask(Task):
 
@@ -435,7 +437,6 @@ class EraseTask(Task):
         super(EraseTask, self).__init__("Erase", hdd)
         self._callback = callback
         self._progress_cb = None
-        
 
     @property
     def Capacity(self):
@@ -516,6 +517,8 @@ class EraseTask(Task):
             self.notes.add("Erase task failed", note_taker="hddmond")
         if(self._callback != None):
             self._callback(self._returncode)
+
+TaskService.register(EraseTask.display_name, EraseTask)
 
 class ImageTask(Task):
 
@@ -716,3 +719,4 @@ class ImageTask(Task):
             except RuntimeError:
                 pass
         
+TaskService.register(ImageTask.display_name, ImageTask)

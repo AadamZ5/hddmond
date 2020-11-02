@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 class TaskQueueInterface(ABC):
-
+    pass
 
 class HddInterface(ABC):
 
@@ -93,13 +93,6 @@ class HddInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def modify_queue(self, action, index, new_index, *a, **kw) -> bool:
-        """
-        Modifies the task_queue for a 
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def abort_task(self) -> bool: 
         """
         Should abort a currently running task.
@@ -130,6 +123,6 @@ class HddInterface(ABC):
     @abstractmethod
     def get_available_tasks(self):
         """
-        Gets the tasks that are available to start on this device
+        Gets the tasks that are available to start on this device. Should return a dictionary of display_name: class_name
         """
         raise NotImplementedError

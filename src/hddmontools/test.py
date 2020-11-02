@@ -4,6 +4,7 @@ import time
 import enum
 import datetime
 from .task import Task
+from .task_service import TaskService
 
 class TestResult(enum.Enum):
     FINISH_PASSED = 0
@@ -191,7 +192,7 @@ class Test(Task):
                 self._progress_cb(self._progress, self._progressString)
             self._last_progress = self._progress
         
-
+TaskService.register(Test.display_name, Test)
             
             
 

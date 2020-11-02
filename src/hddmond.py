@@ -1,7 +1,14 @@
 #!/usr/bin/python3.8
-from injectable import load_injection_container, Autowired, autowired
-load_injection_container("./") #For the `injectable` module. Scans files for injectable items.
+from injectable import load_injection_container, Autowired, autowired, inject
 
+import sys
+import os
+
+PACKAGE_PARENT = '..'
+SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__))))
+sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, PACKAGE_PARENT)))
+
+load_injection_container() #For the `injectable` module. Scans files for injectable items.
 from hddmondtools.hddmanager import ListModel
 from hddmondtools.websocket import WebsocketServer
 from hddmondtools.multiproc_socket import MultiprocSock
@@ -10,10 +17,10 @@ import signal
 from hddmondtools.couchdb import CouchDatabase
 from hddmontools.image import ImageManager, CustomerImage, DiskImage
 
+
 class App:
-    @autowired
-    def __init__(self, image_manager: Autowired(ImageManager)):
-        self.images = image_manager
+    def __init__(self):
+        self.images = inject(ImageManager)
         self.list = ListModel(taskChangedCallback = self.task_changed_cb, database=CouchDatabase("http://192.168.1.2:5984", "vuser", "Velocity_2017!"))
         self.mps = MultiprocSock()
         self.ws = WebsocketServer()

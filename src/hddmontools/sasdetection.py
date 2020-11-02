@@ -1,5 +1,6 @@
 import subprocess
-from .pciaddress import PciAddress
+from hddmontools.pciaddress import PciAddress
+from injectable import injectable
 
 class SasDevice:
     def __init__(self, index=None):
@@ -153,6 +154,7 @@ class SasDevice:
         else:
             pass #Do something else?
 
+@injectable(singleton=True)
 class SasDetective:
     sas2ircu = r'/etc/hddmon/sas2ircu/sas2ircu_linux_x86_rel/sas2ircu'
 

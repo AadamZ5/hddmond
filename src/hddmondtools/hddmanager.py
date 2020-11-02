@@ -21,6 +21,8 @@ from .websocket import WebsocketServer
 from .multiproc_socket import MultiprocSock
 from .hddmon_dataclasses import HddData, TaskQueueData, TaskData, ImageData
 from .genericdatabase import GenericDatabase
+from hddmontools.task_service import TaskService
+from injectable import inject
 
 import inspect
 
@@ -32,13 +34,12 @@ class ListModel:
     def __init__(self, taskChangedCallback = None, database: GenericDatabase = None):
         self.updateInterval = 3 #Interval for scanning for running SMART tests
         self.task_change_outside_callback = taskChangedCallback #callback for when any hdd's task stuff calls back
+        self.task_svc = inject(TaskService)
         self.hdds = [] #The list of hdd's (HddInterface class)
-        self.task_types = self.load_task_types() # Should be {task_name: task_obj}  #The task class's name, and its constructor
         self.blacklist_hdds = self.load_blacklist_file() #The list of hdd's to ignore when seen
         self._udev_context = pyudev.Context() #The UDEV context. #TODO: Autowire?
         self.monitor = pyudev.Monitor.from_netlink(self._udev_context) #The monitor that watches for UDEV object actions (uses C bindings)
         self.monitor.filter_by(subsystem='block', device_type='disk') #Filter the incoming object actions
-        self.PortDetector = hddmontools.portdetection.PortDetection() #Port detection
         self.AutoShortTest = False #Do auto short test on new detected drives?
         self._loopgo = True #Condition for the SMART scan loop
         self.stuffRunning = False #Is stuff running? I don't know
@@ -49,16 +50,6 @@ class ListModel:
         if self.database != None:
             if( not self.database.connect()):
                 self.database = None
-
-    def load_task_types(self):
-        #TODO: DO THIS
-        #Get tasks from task py file? Somehow do dynamic tasks? What do we do?
-
-        return {
-            Test.__name__: Test,
-            EraseTask.__name__: EraseTask,
-            ImageTask.__name__: ImageTask
-        }
 
     def task_change_callback(self, hdd: Hdd, *args, **kwargs):
 
@@ -179,12 +170,16 @@ class ListModel:
         return {'error': 'No hdd(s) found for constraints!'}
 
     def sendTaskTypes(self, *args, **kw):
-        type_display_dict = {}
-        for tname, ttype in self.task_types.items():
-            
-            type_display_dict[tname] = ttype.display_name
+        """
+        Returns each HDD's supported task types
+        """
+
+        hdd_dict = {}
+        for h in self.hdds:
+            type_display_dict = h.get_available_tasks()
+            hdd_dict[h.serial] = type_display_dict
         
-        return type_display_dict
+        return hdd_dict
 
     def taskBySerial(self, *args, **kw):
         l = threading.Lock()
@@ -200,9 +195,9 @@ class ListModel:
 
         if('task' in kw):
             task_name = kw['task']
-            if not (task_name in self.task_types.keys()):
+            if not (task_name in self.task_svc.task_types.keys()):
                 return False
-            task_obj = self.task_types[task_name]
+            task_obj = self.task_svc.task_types[task_name]
             parameter_schema = Task.GetTaskParameterSchema(task_obj)
             if(parameter_schema != None and len(parameter_data.keys()) <= 0):
                 return {'need_parameters': parameter_schema, 'serials': serials, 'task': task_name}
@@ -217,7 +212,6 @@ class ListModel:
             
         l.release()
         return True
-        pass
 
     def abortTaskBySerial(self, *args, **kw):
         l = threading.Lock()
@@ -364,14 +358,12 @@ class ListModel:
             
             if(notFound): #If we didn't find it already in our list, go ahead and add it.
                 h = Hdd.FromSmartDevice(d)
-                #h.pci_address = self.PortDetector.GetPci(h._udev.sys_path)
-                #h.port = self.PortDetector.GetPort(h._udev.sys_path, h.OnPciAddress, h.serial)
                 if self.addHdd(h):
                     print("Added /dev/"+d.name)
                 else:
                     print("Skipped adding /dev/"+d.name)
 
-        print("Added existing devices")
+        print("Finished adding existing devices")
             
     def addHdd(self, hdd: Hdd):
         if(self.check_in_blacklist(hdd)):
@@ -415,9 +407,6 @@ class ListModel:
         print("Udev: " + str(action) + " " + str(device))
         if(action == 'add') and (device != None):
             hdd = Hdd.FromUdevDevice(device)
-            self.PortDetector.Update()
-            hdd.OnPciAddress = self.PortDetector.GetPci(hdd._udev.sys_path)
-            hdd.port = self.PortDetector.GetPort(hdd._udev.sys_path, hdd.OnPciAddress, hdd.serial)
             self.addHdd(hdd)
         elif(action == 'remove') and (device != None):
             self.removeHddStr(device.device_node)

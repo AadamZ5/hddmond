@@ -13,6 +13,7 @@ from .notes import Notes
 import proc.core
 from injectable import inject
 from .hdd_interface import HddInterface
+from .task_service import TaskService
 
 #
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  
@@ -140,6 +141,7 @@ class Hdd(HddInterface):
         self._seen = 0
 
         port_detector = inject(PortDetection)
+        port_detector.Update()
         self._pci_address = port_detector.GetPci(self._udev.sys_path)
         self._port = port_detector.GetPort(self._udev.sys_path, self._pci_address, self.serial)
 
@@ -180,16 +182,16 @@ class Hdd(HddInterface):
                 else:
                     pass
             
-            self.serial = str(self._smart.serial).replace('-', '')
-            self.model = self._smart.model
+            self._serial = str(self._smart.serial).replace('-', '')
+            self._model = self._smart.model
             if(self._smart.is_ssd):
                 self._medium = "SSD"
             else:
                 self._medium = "HDD"
         else:
             self.status = HealthStatus.Unknown
-            self.serial = "Unknown HDD"
-            self.model = ""
+            self._serial = "Unknown HDD"
+            self._model = ""
             #Idk where we go from here
         
     @staticmethod
@@ -218,8 +220,12 @@ class Hdd(HddInterface):
         else:
             return False
 
-    def add_task(self, task: Task):
-        self.TaskQueue.AddTask(task)
+    def add_task(self, *a, **kw):
+        pass
+        #self.TaskQueue.AddTask(task)
+
+    def abort_task(self, *a, **kw):
+        pass
 
     def _task_changed(self, *args, **kw):
         for c in self._task_changed_callbacks:
@@ -248,6 +254,10 @@ class Hdd(HddInterface):
 
     def capture_attributes(self):
         return self._smart.attributes.copy()
+
+    def get_available_tasks(self):
+        task_svc = inject(TaskService)
+        return task_svc.display_names.copy()
             
     def __str__(self):
         if(self.serial):
