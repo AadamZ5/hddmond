@@ -87,7 +87,7 @@ class Task:
         '''
         pass
 
-class TaskQueue:
+class TaskQueue: #TODO: Use asyncio for polling and looping!
     '''
     A container that manages and handles a queue of multiple tasks.
     '''
@@ -124,7 +124,7 @@ class TaskQueue:
     def Full(self):
         return len(self.Queue) >= self.maxqueue
 
-    def __init__(self, maxqueue=4, between_task_wait=1, continue_on_error=True, task_change_callback=None, queue_preset=None):
+    def __init__(self, maxqueue=8, between_task_wait=1, continue_on_error=True, task_change_callback=None, queue_preset=None):
         self.maxqueue = maxqueue
         self.CurrentTask = None
         self._currentcb = None
@@ -423,7 +423,7 @@ class EraseTask(Task):
         self._cap_in_bytes = None
         self._progress = 0
         self.node = hdd.node
-        self.Capacity = int(hdd.Size.replace('GB', '').strip())
+        self.Capacity = int(hdd.capacity if hdd.capacity != None else -1)
         self._monitor = True
         self._started = False
         self._returncode = None
@@ -496,8 +496,12 @@ class EraseTask(Task):
             self._returncode = self._subproc.poll()
             if(self._returncode == None):
                 io = self._procview.io
-                self._progress = int(io['write_bytes'] / self._cap_in_bytes)
-                self._progressString = "Erasing " + str(self.Progress) + "%" 
+                if(self.Capacity > 0):
+                    self._progress = int(io['write_bytes'] / self._cap_in_bytes)
+                    self._progressString = "Erasing " + str(self.Progress) + "%" 
+                else:
+                    self._progress = -1
+                    self._progressString = "Erasing"
                 time.sleep(self._pollingInterval)
 
                 if(self._progress != lastprogress):

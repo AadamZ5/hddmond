@@ -6,7 +6,7 @@ import multiprocessing.connection as ipc
 import proc.core
 import pyudev
 from pySMART import Device
-from hddmontools.hdd import Hdd
+from hddmontools.hdd import Hdd, HddManager
 from hddmontools.task import ExternalTask, Task, ImageTask, EraseTask
 from hddmontools.test import Test
 from hddmontools.image import DiskImage, Partition
@@ -32,7 +32,7 @@ class ListModel:
     def __init__(self, taskChangedCallback = None, database: GenericDatabase = None):
         self.updateInterval = 3 #Interval for scanning for running SMART tests
         self.task_change_outside_callback = taskChangedCallback #callback for when any hdd's task stuff calls back
-        self.hdds = [] #The list of hdd's
+        self.hdds = [] #The list of hdd's (HddInterface class)
         self.task_types = self.load_task_types() # Should be {task_name: task_obj}  #The task class's name, and its constructor
         self.blacklist_hdds = self.load_blacklist_file() #The list of hdd's to ignore when seen
         self._udev_context = pyudev.Context() #The UDEV context. #TODO: Autowire?
@@ -44,6 +44,8 @@ class ListModel:
         self.stuffRunning = False #Is stuff running? I don't know
         self.database = database #The database #TODO: Autowire!
 
+        self.hdd_manager = HddManager(address=('', 56567), authkey=b'big_bunny_vibes') #Serves as a proxy manager for hdd's that are out of this world! (Remote clients)
+
         if self.database != None:
             if( not self.database.connect()):
                 self.database = None
@@ -53,9 +55,9 @@ class ListModel:
         #Get tasks from task py file? Somehow do dynamic tasks? What do we do?
 
         return {
-            'Test': Test,
-            'EraseTask': EraseTask,
-            'ImageTask': ImageTask
+            Test.__name__: Test,
+            EraseTask.__name__: EraseTask,
+            ImageTask.__name__: ImageTask
         }
 
     def task_change_callback(self, hdd: Hdd, *args, **kwargs):
@@ -99,7 +101,7 @@ class ListModel:
         t = task_queue_data.completed[0]
 
         self.database.add_task(hdd.serial, t)
-        if 'test' in t.name.lower():
+        if 'test' in t.__name__.lower():
             self.database.insert_attribute_capture(HddData.FromHdd(hdd))
             print("Captured SMART data into database from {0}".format(hdd.serial))
 
@@ -217,73 +219,6 @@ class ListModel:
         return True
         pass
 
-    def eraseBySerial(self, *args, **kw): #Starts an erase operation on the drives matching the input serials
-        r = False
-        l = threading.Lock()
-        l.acquire()
-        serials = []
-        if('serials' in kw):
-            serials = kw['serials']
-
-        for s in serials:
-            for h in self.hdds:
-                if h.serial == s:
-                    r = h.Erase()
-                    if r == True:
-                        print("Queued erase on " + str(h.serial))
-                    else:
-                        print("Couldn't start erase on " + str(h.serial))
-                    break;
-        l.release()
-        return r
-
-    def shortTestBySerial(self, *args, **kw): #Starts a short test on the drives matching the input serials
-        l = threading.Lock()
-        l.acquire()
-        serials = []
-        if('serials' in kw):
-            serials = kw['serials']
-            
-        for s in serials:
-            for h in self.hdds:
-                if h.serial == s:
-                    h.ShortTest()
-                    print("Queued short test on {0}".format(h.serial))
-                    break;
-        l.release()
-        return True
-
-    def longTestBySerial(self, *args, **kw): #Starts a long test on the drives matching the input serials
-        l = threading.Lock()
-        l.acquire()
-        serials = []
-        if('serials' in kw):
-            serials = kw['serials']
-            
-        for s in serials:
-            for h in self.hdds:
-                if h.serial == s:
-                    h.LongTest()
-                    print("Queued long test on {0}".format(h.serial))
-                    break;
-        l.release()
-        return True
-
-    def abortTestBySerial(self, *args, **kw): #Stops a test on the drives matching the input serials
-        l = threading.Lock()
-        l.acquire()
-        serials = []
-        if('serials' in kw):
-            serials = kw['serials']
-            
-        for s in serials:
-            for h in self.hdds:
-                if h.serial == s:
-                    h.AbortTest()
-                    break;
-        l.release()
-        return True
-
     def abortTaskBySerial(self, *args, **kw):
         l = threading.Lock()
         l.acquire()
@@ -393,7 +328,7 @@ class ListModel:
                     if(time.time() - hdd._smart_last_call > smart_coldcall_interval): #If we're not testing, occasionally check to see if a test was started externally.
                         #print("smart cold-call to " + str(hdd.serial))
                         try:
-                            hdd.UpdateSmart()
+                            hdd.update_smart()
                             hdd._smart_last_call = time.time()
                         except Exception as e:
                             print("Exception raised during SMART refresh!: " + str(e))
@@ -402,7 +337,7 @@ class ListModel:
                 else:
                     task = self.findProcAssociated(hdd.name)
                     if(task != None):
-                        hdd.TaskQueue.AddTask(ExternalTask(hdd, task.pid, processExitCallback=hdd._taskCompletedCallback))
+                        hdd.TaskQueue.AddTask(ExternalTask(hdd, task.pid))
             self.stuffRunning = busy
             time.sleep(1)
 
@@ -422,17 +357,20 @@ class ListModel:
                 notFound = False
 
             for hdd in self.hdds:
-                print("Testing: /dev/" + d.name + " == " + hdd.node)
+                #print("Testing: /dev/" + d.name + " == " + hdd.node)
                 if(hdd.node == "/dev/" + d.name) : #This device path exists. Do not add it.
                     notFound = False
                     break
             
             if(notFound): #If we didn't find it already in our list, go ahead and add it.
                 h = Hdd.FromSmartDevice(d)
-                h.OnPciAddress = self.PortDetector.GetPci(h._udev.sys_path)
-                h.port = self.PortDetector.GetPort(h._udev.sys_path, h.OnPciAddress, h.serial)
-                self.addHdd(h)
-                print("Added /dev/"+d.name)
+                #h.pci_address = self.PortDetector.GetPci(h._udev.sys_path)
+                #h.port = self.PortDetector.GetPort(h._udev.sys_path, h.OnPciAddress, h.serial)
+                if self.addHdd(h):
+                    print("Added /dev/"+d.name)
+                else:
+                    print("Skipped adding /dev/"+d.name)
+
         print("Added existing devices")
             
     def addHdd(self, hdd: Hdd):
@@ -442,11 +380,11 @@ class ListModel:
 
         t = self.findProcAssociated(hdd.name)
         if(t != None):
-            hdd.TaskQueue.AddTask(ExternalTask(hdd, t.pid, processExitCallback=hdd._taskCompletedCallback))
+            hdd.TaskQueue.AddTask(ExternalTask(hdd, t.pid))
         self.hdds.append(hdd)
         if(self.AutoShortTest == True) and (not isinstance(hdd.TaskQueue.CurrentTask, Test)):
             hdd.ShortTest()
-        hdd.AddTaskChangeCallback(self.task_change_callback)
+        hdd.add_task_changed_callback(self.task_change_callback)
 
         if(self.database != None):
             self.database.update_hdd(HddData.FromHdd(hdd))
@@ -454,6 +392,8 @@ class ListModel:
 
         if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
             self.task_change_outside_callback({'update': 'add', 'data': HddData.FromHdd(hdd)})
+        
+        return True
 
     def removeHddHdd(self, hdd: Hdd):
         self.removeHddStr(hdd.node)
@@ -500,16 +440,18 @@ class ListModel:
         self.observer.start()
         self._loopgo = True
 
+        self.hdd_manager.start()
+
         self.updateDevices()
         print("Done initializing.")
         self.updateLoop()
 
     def stop(self):
-        print("hddmanager stopping...")
+        print("Stopping hddmanager...")
         self._loopgo = False
-        print("stopping udev observer...")
+        print("Stopping udev observer...")
         self.observer.stop()
-        print("stopping tasks...")
+        print("Stopping tasks...")
         for h in self.hdds:
             print("Stopping tasks on {0}".format(h.serial))
             h.TaskQueue.Pause = True
@@ -524,6 +466,9 @@ class ListModel:
         print("Disconnecting database...")
         if self.database != None:
             self.database.disconnect()
+        
+        print("Stopping proxy HDD manager...")
+        self.hdd_manager.shutdown()
 
     def signal_close(self, signalNumber, frame):
         print("Got signal " + str(signalNumber) + ", quitting.")

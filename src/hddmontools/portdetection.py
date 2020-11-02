@@ -4,7 +4,9 @@ from .ahcidetection import *
 from .sasdetection import *
 import subprocess
 from .pciaddress import PciAddress
+from injectable import injectable
 
+@injectable(singleton=True)
 class PortDetection():
     def __init__(self):
         self.ahcidet = AhciDetective()

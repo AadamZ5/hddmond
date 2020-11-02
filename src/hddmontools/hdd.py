@@ -8,8 +8,11 @@ import enum
 from .pciaddress import PciAddress
 from .test import Test, TestResult
 from .task import EraseTask, ImageTask, TaskQueue, Task
+from .portdetection import PortDetection
 from .notes import Notes
 import proc.core
+from injectable import inject
+from .hdd_interface import HddInterface
 
 #
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  
@@ -26,10 +29,80 @@ class HealthStatus(enum.Enum):
     def __str__(self):
         return self.name
 
-class Hdd:
+class Hdd(HddInterface):
     """
     Class for storing data about HDDs
     """
+
+    @property
+    def serial(self) -> str:
+        """
+        Returns the serial for the device
+        """
+        return self._serial
+
+    @property
+    def model(self) -> str:
+        """
+        Returns the model for the device
+        """
+        return self._model
+
+    @property
+    def wwn(self) -> str:
+        """
+        Returns the WWN that smartctl obtained for the device
+        """
+        return self._wwn
+
+    @property
+    def node(self) -> str:
+        """
+        Returns the node for the device ("/dev/sdX" for example)
+        """
+        return self._node
+
+    @property
+    def name(self) -> str:
+        """
+        Returns the kernel name for the device. ("sdX" for example)
+        """
+        return self._name
+
+    @property
+    def port(self):
+        """
+        Returns the port for the device, if applicable.
+        """
+        return self._port
+
+    @property
+    def capacity(self) -> float:
+        """
+        Returns the capacity in GiB for the device
+        """
+        return self._capacity
+
+    @property
+    def medium(self) -> str:
+        """
+        Returns the medium of the device. (SSD or HDD)
+        """
+        return self._medium
+
+    @property
+    def seen(self) -> int:
+        """
+        Returns how many times this drive has been seen
+        """
+        return self._seen
+
+    @seen.setter
+    def seen(self, value: int):
+        """
+        Sets how many times this drive has been seen
+        """
+        self._seen = value
 
     def __getstate__(self):
         # Copy the object's state from self.__dict__ which contains
@@ -51,22 +124,25 @@ class Hdd:
         '''
         Create a hdd object from its symlink node '/dev/sd?'
         '''
-        self.serial = '"HDD"'
-        self.model = str()
-        self.wwn = str()
-        self.node = node
-        self.name = str(node).replace('/dev/', '')
+        self._serial = '"HDD"'
+        self._model = str()
+        self._wwn = str()
+        self._node = node
+        self._name = str(node).replace('/dev/', '')
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), node)
-        self.OnPciAddress = None
-        self.test = None
         self._task_changed_callbacks = []
         self._smart = pySMART.Device(self.node)
-        self.port = None
+        self._port = None
         self.TaskQueue = TaskQueue(continue_on_error=False, task_change_callback=self._task_changed)
-        self.Size = self._smart.capacity
+        self._size = self._smart.capacity
+        self._pci_address = None
         self.notes = Notes()
-        self.seen = 0
-        
+        self._seen = 0
+
+        port_detector = inject(PortDetection)
+        self._pci_address = port_detector.GetPci(self._udev.sys_path)
+        self._port = port_detector.GetPort(self._udev.sys_path, self._pci_address, self.serial)
+
         try:
             sizeunit = self._smart.capacity.split()
             unit = sizeunit[1]
@@ -75,16 +151,16 @@ class Hdd:
             if unit.lower() == 'tb':
                 size = size * 1000
 
-            self.capacity = size
+            self._capacity = size
         except AttributeError:
-            self.capacity = None
+            self._capacity = None
             pass
         except Exception:
-            self.capacity = None
+            self._capacity = None
             print("Exception occurred while parsing capacity of drive " + self.serial + ". This drive may not function properly")
 
         self._smart_last_call = time.time()
-        self.medium = None #SSD or HDD
+        self._medium = None #SSD or HDD
         self.status = HealthStatus.Default
 
         #Check interface
@@ -107,9 +183,9 @@ class Hdd:
             self.serial = str(self._smart.serial).replace('-', '')
             self.model = self._smart.model
             if(self._smart.is_ssd):
-                self.medium = "SSD"
+                self._medium = "SSD"
             else:
-                self.medium = "HDD"
+                self._medium = "HDD"
         else:
             self.status = HealthStatus.Unknown
             self.serial = "Unknown HDD"
@@ -144,14 +220,13 @@ class Hdd:
 
     def add_task(self, task: Task):
         self.TaskQueue.AddTask(task)
-        pass
 
     def _task_changed(self, *args, **kw):
         for c in self._task_changed_callbacks:
             if c != None and callable(c):
                 c(self, *args, **kw)
 
-    def AddTaskChangeCallback(self, callback) -> None:
+    def add_task_changed_callback(self, callback) -> None:
         self._task_changed_callbacks.append(callback)
 
     def _testCompletedCallback(self, result: TestResult):
@@ -168,44 +243,7 @@ class Hdd:
         else:
             self.status = HealthStatus.Warn
 
-        self._taskCompletedCallback(0)
-
-    def ShortTest(self) -> None:
-        #self.status = HealthStatus.ShortTesting
-        t = Test(self, 'short', pollingInterval=5)
-        self.TaskQueue.AddTask(t)
-
-    def LongTest(self) -> None:
-        #self.status = HealthStatus.ShortTesting
-        t = Test(self, 'long', pollingInterval=5)
-        self.TaskQueue.AddTask(t)
-
-    def _taskCompletedCallback(self, returncode):
-        pass
-
-    def Erase(self, callback=None) -> bool:
-        if not self.TaskQueue.Full:
-            t = EraseTask(self, callback=self._taskCompletedCallback)
-            r = self.TaskQueue.AddTask(t)
-            return r #We probably queued the task sucessfully
-        else:
-            return False #Queue is full
-
-    def Image(self, image, callback=None) -> bool:
-        if not self.TaskQueue.Full:
-            t = ImageTask(self, image, self._taskCompletedCallback)
-            self.TaskQueue.AddTask(t)
-            return True #We queued the task sucessfully
-        else:
-            return False #Queue is full, wait.
-    
-    def GetTaskProgressString(self) -> str:
-        if(self.TaskQueue.CurrentTask != None):
-            return self.TaskQueue.CurrentTask.ProgressString
-        else:
-            return "Idle"
-
-    def UpdateSmart(self) -> None:
+    def update_smart(self) -> None:
         self._smart.update()
 
     def capture_attributes(self):

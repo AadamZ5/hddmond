@@ -19,10 +19,10 @@ class App:
         self.ws = WebsocketServer()
 
         #TODO: Remove MultiProcess socket and use only websocket
-        self.mps.register_command('erase', self.list.eraseBySerial)
-        self.mps.register_command('shorttest', self.list.shortTestBySerial)
-        self.mps.register_command('longtest', self.list.longTestBySerial)
-        self.mps.register_command('aborttest', self.list.abortTestBySerial)
+        self.mps.register_command('erase', None)
+        self.mps.register_command('shorttest', None)
+        self.mps.register_command('longtest', None)
+        self.mps.register_command('aborttest', None)
         self.mps.register_command('getimages', self.image_shim)
         #self.mps.register_command('image', self.list.imageBySerial)
         self.mps.register_command('addtask', self.list.taskBySerial)
@@ -41,7 +41,7 @@ class App:
         self.ws.register_command('pausequeue', self.list.pauseQueue)
         self.ws.register_command('blacklist', self.list.blacklist)
         self.ws.register_command('blacklisted', self.list.sendBlacklist)
-        self.ws.register_command('upload_image', self.images.create_upload_session)
+        self.ws.register_command('upload_image', None)
         self.ws.register_command('upload_image_done', None)
 
     def ws_update(self, payload):
