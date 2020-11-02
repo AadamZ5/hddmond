@@ -45,8 +45,6 @@ class ListModel:
         self.stuffRunning = False #Is stuff running? I don't know
         self.database = database #The database #TODO: Autowire!
 
-        self.hdd_manager = HddManager(address=('', 56567), authkey=b'big_bunny_vibes') #Serves as a proxy manager for hdd's that are out of this world! (Remote clients)
-
         if self.database != None:
             if( not self.database.connect()):
                 self.database = None
@@ -429,8 +427,6 @@ class ListModel:
         self.observer.start()
         self._loopgo = True
 
-        self.hdd_manager.start()
-
         self.updateDevices()
         print("Done initializing.")
         self.updateLoop()
@@ -455,9 +451,6 @@ class ListModel:
         print("Disconnecting database...")
         if self.database != None:
             self.database.disconnect()
-        
-        print("Stopping proxy HDD manager...")
-        self.hdd_manager.shutdown()
 
     def signal_close(self, signalNumber, frame):
         print("Got signal " + str(signalNumber) + ", quitting.")
