@@ -4,7 +4,7 @@ import string
 import datetime
 import time
 import socket
-
+import jsonpickle
 class MessageDispatcher:
     def __init__(self, socket: socket.socket, incoming_msg_callback=None, event_callback=None):
         self.pending_messages = {} #Dict of {message_key: callback}
@@ -16,8 +16,13 @@ class MessageDispatcher:
 
     def _server_loop(self):
         while True:
-            self._socket.recv(1024) #Should be a {'message_key': m_key, 'data': some_data}
+            m_bytes = self._socket.recv(1024) #Should be a {'message_key': m_key, 'data': some_data}
             #TODO parse the data somehow!
+            m = jsonpickle.loads(str(m_bytes))
+            if "message_key" in m:
+                #Determine if this is a returning message, or a new one.
+                pass #TODO: Logic
+
 
     def _process_msg(self, whole_message):
         pass
@@ -28,10 +33,13 @@ class MessageDispatcher:
         If callback is not supplied, the message will be stored until recieve is called to obtain it.
         """
         m_key = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
+        while (m_key in self.pending_messages) or (m_key in self.recieved_waiting): #Make sure we don't generate a key we already have, a rare chance. 
+            m_key = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
+        
         self.pending_messages[m_key] = callback
-        #TODO: Socket send {"message_key": m_key, "data": some_data}
-        #TODO: Encode the data somehow! use JSONPickle?
-        self._socket.send(message)
+
+        send = jsonpickle.dumps({"message_key": m_key, "data": message}, unpicklable=False, make_refs=False)
+        self._socket.send(send)
         return m_key
 
     def recv(self, key: str):
