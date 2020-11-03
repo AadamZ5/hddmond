@@ -1,9 +1,15 @@
 #!/usr/bin/python3.8
 import os, sys
-os.chdir('/etc/hddmon')
-sys.path.append('/etc/hddmon')
-import subprocess
-from hddmontools.hdd import Hdd, HddManager
+
+PACKAGE_PARENT = '..'
+SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__))))
+sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, PACKAGE_PARENT)))
+
+from injectable import load_injection_container
+load_injection_container('./') #For the `injectable` module. Scans files for injectable items.
+
+from hddmontools.hdd import Hdd
+from hddmontools.hdd_remote import HddRemoteHost
 
 class LocalInstance:
 
@@ -18,11 +24,8 @@ class LocalInstance:
             authkey = bytearray(authkey, 'ascii')
 
         self.node = kw.get('node', None)
-
-        self.hdd_manager = HddManager(self.server_address, authkey=authkey)
-        self.hdd_manager.connect()
-
-
+        self.hdd = Hdd(self.node)
+        self.hdd_wrapper = HddRemoteHost(self.hdd, self.server_address)
 
 if __name__ == "__main__":
     verbose = False

@@ -5,15 +5,14 @@ import time
 import subprocess
 import datetime
 import enum
+from .task_service import TaskService
 from .pciaddress import PciAddress
-from .test import Test, TestResult
-from .task import EraseTask, ImageTask, TaskQueue, Task
+from .task import Task, TaskQueue
 from .portdetection import PortDetection
 from .notes import Notes
 import proc.core
 from injectable import inject
 from .hdd_interface import HddInterface
-from .task_service import TaskService
 
 #
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  

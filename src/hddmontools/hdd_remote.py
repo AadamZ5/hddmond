@@ -1,60 +1,11 @@
 
+import asyncio
+import socket
+
 from hddmontools.hdd_interface import HddInterface
 from hddmontools.hdd import Hdd
-
-import random
-import string
-import time
-import datetime
-class MessageDispatcher:
-    def __init__(self, socket):
-        self.pending_messages = {} #Dict of {message_key: callback}
-        self.recieved_waiting = {} #Dict of {message_key: data_string}
-
-    def send(self, message, callback=None):
-        """
-        Sends a message, and then returns a message key.
-        If callback is not supplied, the message will be stored until recieve is called to obtain it.
-        """
-        m_key = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
-        self.pending_messages[m_key] = callback
-        #TODO: Socket send {"message_key": m_key, "data": some_data}
-
-        return m_key
-
-    def recv(self, key: str):
-        """
-        Checks to see if a message has returned.
-        Returns `None` if no message is ready, and will Except if no message by that key is pending.
-        """
-        if key in self.pending_messages:
-            return None
-        elif key in self.recieved_waiting:
-            data = self.recieved_waiting[key]
-            del self.recieved_waiting[key]
-            return data
-        else:
-            raise Exception("No message found")
-
-    def send_and_recv(self, message, timeout_ms=None):
-        """
-        Sends a message and blocks until a response, or an optional timeout.
-        """
-        key = self.send(message)
-        time_start = datetime.datetime.now()
-        while True:
-            data = self.recv(key)
-            if data != None:
-                return data
-            else:
-                if timeout_ms != None:
-                    if datetime.datetime.now() - time_start > timeout_ms:
-                        return None
-                time.sleep(0.001)
+from hddmontools.message_dispatcher import MessageDispatcher
                 
-        
-
-
 class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemoteReciever class already does that. This class will not be seen by Hddmon.
     """
     HddRemoteHost serves as a wrapper for a native HDD object on a client's end. The HddRemoteHost will host a connection to an HDD, which a reciever server
@@ -62,7 +13,8 @@ class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemo
     """
     def __init__(self, hdd:Hdd, address):
         self.hdd = hdd
-        pass
+        self._socket = socket.create_connection(address, 10000)
+        self.messenger = MessageDispatcher(self._socket)
 
 
 class HddRemoteReciever(HddInterface):
@@ -70,7 +22,10 @@ class HddRemoteReciever(HddInterface):
     HddRemoteReciever is used on the server side after an incoming connection is established with a client. The client will host a connection
     to their HDD using HddRemoteHost which serves as a translater or proxy for commands and data. 
     """
-    def __init__(self):
+    def __init__(self, socket: socket.socket):
+        self.messenger = MessageDispatcher(socket, event_callback=self._event_method)
+
+    def _event_method(self, *a, **kw):
         pass
 
     @property
@@ -78,7 +33,8 @@ class HddRemoteReciever(HddInterface):
         """
         Returns the serial for the device
         """
-        raise NotImplementedError
+        data = self.messenger.send_and_recv({'get': 'serial'}, 10000)
+        return data['serial']
 
     @property
     def model(self) -> str:
@@ -178,3 +134,59 @@ class HddRemoteReciever(HddInterface):
         Gets the tasks that are available to start on this device. Should return a dictionary of display_name: class_name
         """
         raise NotImplementedError
+
+import threading
+from injectable import injectable
+
+@injectable(singleton=True)
+class HddRemoteRecieverServer:
+    def __init__(self, udp_discovery_server_address=None):
+        self._udp_address = udp_discovery_server_address
+        if(self._udp_address != None):
+            self.discovery_server = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM, proto=socket.IPPROTO_UDP)
+            self.discovery_server.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)# Enable broadcasting mode
+        else:
+            self.discovery_server = None
+        
+        self._tcp_address = ('', 56567)
+        self.server = socket.create_server(self._tcp_address, family=socket.AF_INET)
+        #self.server.setsockopt(socket.SOL_SOCKET, socket.SOCK_NONBLOCK, 1)# No block
+        self.server.settimeout(5)# 5 second timeout
+        self._tcp_thread = threading.Thread(name="remote_hdd_server", target=self._server)
+        self._loop_go = True
+
+        #self._clients = {} #List of HddRemoteRecievers
+        self._callbacks = [] #List of callable
+
+    def register_devchange_callback(self, callback):
+        """
+        Registers a callback that when called, has kwargs "action" ('add'/'remove') and "device" which is an HddInterface
+        """
+
+        if(callback != None) and (callable(callback)):
+            self._callbacks.append(callback)
+
+    def _do_callbacks(self, action: str, device: HddInterface):
+        for c in self._callbacks:
+            c(action=action, device=device)
+
+    def _server(self):
+        while self._loop_go:
+            try:
+                conn, add = self.server.accept()
+            except socket.timeout:
+                pass #The socket timed out. No failure.
+            else:
+                if(conn):
+                    new_client = HddRemoteReciever(conn)
+                    self._do_callbacks('add', new_client)
+
+
+    def start(self):
+        self._loop_go = True
+        self._tcp_thread.start()
+
+    def stop(self):
+        self._loop_go = False
+        self._tcp_thread.join()
+        self.server.shutdown(socket.SHUT_RDWR)

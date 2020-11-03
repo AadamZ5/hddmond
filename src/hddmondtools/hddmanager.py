@@ -22,6 +22,7 @@ from .multiproc_socket import MultiprocSock
 from .hddmon_dataclasses import HddData, TaskQueueData, TaskData, ImageData
 from .genericdatabase import GenericDatabase
 from hddmontools.task_service import TaskService
+from hddmontools.hdd_remote import HddRemoteRecieverServer
 from injectable import inject
 
 import inspect
@@ -40,6 +41,7 @@ class ListModel:
         self._udev_context = pyudev.Context() #The UDEV context. #TODO: Autowire?
         self.monitor = pyudev.Monitor.from_netlink(self._udev_context) #The monitor that watches for UDEV object actions (uses C bindings)
         self.monitor.filter_by(subsystem='block', device_type='disk') #Filter the incoming object actions
+        self.remote_hdd_server = inject(HddRemoteRecieverServer)
         self.AutoShortTest = False #Do auto short test on new detected drives?
         self._loopgo = True #Condition for the SMART scan loop
         self.stuffRunning = False #Is stuff running? I don't know
@@ -427,6 +429,8 @@ class ListModel:
         self.observer.start()
         self._loopgo = True
 
+        self.remote_hdd_server.start()
+
         self.updateDevices()
         print("Done initializing.")
         self.updateLoop()
@@ -451,6 +455,9 @@ class ListModel:
         print("Disconnecting database...")
         if self.database != None:
             self.database.disconnect()
+
+        print("Remote hdds...")
+        self.remote_hdd_server.stop()
 
     def signal_close(self, signalNumber, frame):
         print("Got signal " + str(signalNumber) + ", quitting.")
