@@ -163,11 +163,14 @@ class HddData(Interface):
     seen: int
 
     @staticmethod
-    def FromHdd(hdd):
+    def FromHdd(hdd): #HddInterface
         notes = []
         for n in hdd.notes.entries:
             notes.append(NoteData.FromNote(n))
-        return HddData(hdd.serial, hdd.model, hdd.wwn, hdd.capacity, str(hdd.status), str(hdd._smart.assessment), TaskQueueData.FromTaskQueue(hdd.TaskQueue), hdd.node, str(hdd.port), SmartData.FromSmartDev(hdd._smart), notes, hdd.seen)
+        try:
+            return HddData(hdd.serial, hdd.model, hdd.wwn, hdd.capacity, None, str(hdd.smart_data.assessment), TaskQueueData.FromTaskQueue(hdd.TaskQueue), hdd.node, str(hdd.port), hdd.smart_data, notes, hdd.seen)
+        except:
+            return None
 
 
 

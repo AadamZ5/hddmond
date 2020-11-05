@@ -10,7 +10,7 @@ load_injection_container('./') #For the `injectable` module. Scans files for inj
 
 from hddmontools.hdd import Hdd
 from hddmontools.hdd_remote import HddRemoteHost
-
+import time
 class LocalInstance:
 
     def __init__(self, *a, **kw):
@@ -26,6 +26,7 @@ class LocalInstance:
         self.node = kw.get('node', None)
         self.hdd = Hdd(self.node)
         self.hdd_wrapper = HddRemoteHost(self.hdd, self.server_address)
+        self.hdd_wrapper.messenger._server_loop_thread.join() 
 
 if __name__ == "__main__":
     verbose = False

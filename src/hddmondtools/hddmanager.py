@@ -6,7 +6,7 @@ import multiprocessing.connection as ipc
 import proc.core
 import pyudev
 from pySMART import Device
-from hddmontools.hdd import Hdd, HddManager
+from hddmontools.hdd import Hdd, HddInterface
 from hddmontools.task import ExternalTask, Task, ImageTask, EraseTask
 from hddmontools.test import Test
 from hddmontools.image import DiskImage, Partition
@@ -42,6 +42,7 @@ class ListModel:
         self.monitor = pyudev.Monitor.from_netlink(self._udev_context) #The monitor that watches for UDEV object actions (uses C bindings)
         self.monitor.filter_by(subsystem='block', device_type='disk') #Filter the incoming object actions
         self.remote_hdd_server = inject(HddRemoteRecieverServer)
+        self.remote_hdd_server.register_devchange_callback(self.remote_hdd_callback)
         self.AutoShortTest = False #Do auto short test on new detected drives?
         self._loopgo = True #Condition for the SMART scan loop
         self.stuffRunning = False #Is stuff running? I don't know
@@ -50,6 +51,22 @@ class ListModel:
         if self.database != None:
             if( not self.database.connect()):
                 self.database = None
+    
+    def remote_hdd_callback(self, action, device: HddInterface):
+        if('add' in action):
+            print("Got a remote device!")
+            if device.serial in (h.serial for h in self.hdds):
+                device.disconnect()
+            else:
+                self.hdds.append(device)
+            if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
+                self.task_change_outside_callback({'update': 'add', 'data': HddData.FromHdd(device)})
+        elif('remove' in action):
+            self.hdds.remove(device)
+            if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
+                self.task_change_outside_callback({'update': 'remove', 'data': HddData.FromHdd(device)})                    
+
+
 
     def task_change_callback(self, hdd: Hdd, *args, **kwargs):
 
@@ -92,7 +109,7 @@ class ListModel:
         t = task_queue_data.completed[0]
 
         self.database.add_task(hdd.serial, t)
-        if 'test' in t.__name__.lower():
+        if 'test' in t.name.lower():
             self.database.insert_attribute_capture(HddData.FromHdd(hdd))
             print("Captured SMART data into database from {0}".format(hdd.serial))
 
@@ -318,6 +335,9 @@ class ListModel:
         while self._loopgo:
             busy = False
             for hdd in self.hdds:
+                if not isinstance(hdd, Hdd): #Only perform on local Hdd devices
+                    continue
+
                 if not (isinstance(hdd.TaskQueue.CurrentTask, Test)): #Check if the current task is a test or not
                     if(time.time() - hdd._smart_last_call > smart_coldcall_interval): #If we're not testing, occasionally check to see if a test was started externally.
                         #print("smart cold-call to " + str(hdd.serial))
@@ -451,6 +471,7 @@ class ListModel:
                 else:
                     print("Aborting task " + str(h.TaskQueue.CurrentTask.name) + " (PID: " + str(h.TaskQueue.CurrentTask.PID) + ") on " + h.serial)
                     h.TaskQueue.CurrentTask.abort(wait=True) #Wait for abortion so database entries can be entered before we disconnect the database.
+            h.disconnect()
 
         print("Disconnecting database...")
         if self.database != None:

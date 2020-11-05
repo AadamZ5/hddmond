@@ -12,7 +12,8 @@ from .portdetection import PortDetection
 from .notes import Notes
 import proc.core
 from injectable import inject
-from .hdd_interface import HddInterface
+from .hdd_interface import HddInterface, TaskQueueInterface
+from hddmondtools.hddmon_dataclasses import SmartData
 
 #
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  
@@ -33,6 +34,13 @@ class Hdd(HddInterface):
     """
     Class for storing data about HDDs
     """
+
+    @property
+    def TaskQueue(self) -> TaskQueueInterface:
+        """
+        Returns the serial for the device
+        """
+        return self._TaskQueue
 
     @property
     def serial(self) -> str:
@@ -104,6 +112,20 @@ class Hdd(HddInterface):
         """
         self._seen = value
 
+    @property
+    def notes(self):
+        """
+        Sets how many times this drive has been seen
+        """
+        return self._notes
+
+    @property
+    def smart_data(self) -> SmartData:
+        """
+        The smart_data object
+        """
+        return SmartData.FromSmartDev(self._smart)
+
     def __getstate__(self):
         # Copy the object's state from self.__dict__ which contains
         # all our instance attributes. Always use the dict.copy()
@@ -133,10 +155,10 @@ class Hdd(HddInterface):
         self._task_changed_callbacks = []
         self._smart = pySMART.Device(self.node)
         self._port = None
-        self.TaskQueue = TaskQueue(continue_on_error=False, task_change_callback=self._task_changed)
+        self._TaskQueue = TaskQueue(continue_on_error=False, task_change_callback=self._task_changed)
         self._size = self._smart.capacity
         self._pci_address = None
-        self.notes = Notes()
+        self._notes = Notes()
         self._seen = 0
 
         port_detector = inject(PortDetection)
@@ -162,25 +184,9 @@ class Hdd(HddInterface):
 
         self._smart_last_call = time.time()
         self._medium = None #SSD or HDD
-        self.status = HealthStatus.Default
 
         #Check interface
         if(self._smart.interface != None):
-
-            #Set our status according to initial health assesment
-            #self._map_smart_assesment()
-
-            #See if we're currently running a test
-            status, testObj, remain = self._smart.get_selftest_result()
-            if status == 1:
-                #self.testProgress = self._smart._test_progress
-                if not (self.status == HealthStatus.ShortTesting) or (self.status == HealthStatus.LongTesting):
-                    self.status = HealthStatus.LongTesting #We won't know if this is a short or long test, so assume it can be long for sake of not pissing off the user.
-                    t = Test(self, Test.Existing, callback=self._testCompletedCallback)
-                    self.TaskQueue.AddTask(t)
-                else:
-                    pass
-            
             self._serial = str(self._smart.serial).replace('-', '')
             self._model = self._smart.model
             if(self._smart.is_ssd):
@@ -188,7 +194,6 @@ class Hdd(HddInterface):
             else:
                 self._medium = "HDD"
         else:
-            self.status = HealthStatus.Unknown
             self._serial = "Unknown HDD"
             self._model = ""
             #Idk where we go from here
@@ -221,7 +226,7 @@ class Hdd(HddInterface):
 
     def add_task(self, *a, **kw):
         pass
-        #self.TaskQueue.AddTask(task)
+        #self._TaskQueue.AddTask(task)
 
     def abort_task(self, *a, **kw):
         pass
@@ -234,20 +239,6 @@ class Hdd(HddInterface):
     def add_task_changed_callback(self, callback) -> None:
         self._task_changed_callbacks.append(callback)
 
-    def _testCompletedCallback(self, result: TestResult):
-        if(result == TestResult.FINISH_PASSED):
-            self.status = HealthStatus.Passing
-
-        elif(result == TestResult.FINISH_FAILED): 
-            self.status = HealthStatus.Failing
-
-        elif(result == TestResult.ABORTED):
-            self.status = HealthStatus.Default
-        elif(result == TestResult.CANT_START):
-            self.status = self.status
-        else:
-            self.status = HealthStatus.Warn
-
     def update_smart(self) -> None:
         self._smart.update()
 
@@ -257,6 +248,12 @@ class Hdd(HddInterface):
     def get_available_tasks(self):
         task_svc = inject(TaskService)
         return task_svc.display_names.copy()
+
+    def disconnect(self):
+        """
+        Block and finalize anything on the HDD
+        """
+        pass
             
     def __str__(self):
         if(self.serial):

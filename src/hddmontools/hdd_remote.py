@@ -2,10 +2,12 @@
 import asyncio
 import socket
 
-from hddmontools.hdd_interface import HddInterface
+from hddmontools.hdd_interface import HddInterface, TaskQueueInterface
 from hddmontools.hdd import Hdd
 from hddmontools.message_dispatcher import MessageDispatcher
-                
+
+
+
 class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemoteReciever class already does that. This class will not be seen by Hddmon.
     """
     HddRemoteHost serves as a wrapper for a native HDD object on a client's end. The HddRemoteHost will host a connection to an HDD, which a reciever server
@@ -14,26 +16,89 @@ class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemo
     def __init__(self, hdd:Hdd, address):
         self.hdd = hdd
         self._socket = socket.create_connection(address, 10000)
-        self.messenger = MessageDispatcher(self._socket)
+        self.messenger = MessageDispatcher(self._socket, incoming_msg_callback=self._incoming_msg, event_callback=self._event_method)
+        self.messenger.start()
 
+    def stop(self):
+        self.messenger.send_event({'close': 'close'})
+        self.messenger.stop()
+
+    def _incoming_msg(self, *a, **kw):
+        data = kw.get('data', None)
+
+        if('attribute' in data): #They want an attribute from our hdd. Ask our hdd for the attribute, which it should have.
+            attr = data['attribute']
+            if('value' in data):
+                val = data['value']
+                try:
+                    setattr(self.hdd, attr, val)
+                except AttributeError:
+                    print("Reciever tried to set {0} attribute, which doesn't exist!".format(attr))
+            try:
+                ret_val = getattr(self.hdd, attr)
+            except AttributeError:
+                print("Reciever asked for {0} attribute, which doesn't exist!".format(attr))
+                ret_val = None
+            
+            return {attr: ret_val}
+
+    def _event_method(self, *a, **kw):
+        event = kw.get('event', None)
+        data = kw.get('data', None)
+
+        if 'close' in event:
+            print("Myself is done")
+        elif 'lost_connection' in event:
+            self.messenger.stop()
+            print("We've lost connection!")
+        elif 'data' in event:
+            #TODO: Parse this!
+            pass
 
 class HddRemoteReciever(HddInterface):
     """
     HddRemoteReciever is used on the server side after an incoming connection is established with a client. The client will host a connection
     to their HDD using HddRemoteHost which serves as a translater or proxy for commands and data. 
     """
-    def __init__(self, socket: socket.socket):
-        self.messenger = MessageDispatcher(socket, event_callback=self._event_method)
+    def __init__(self, socket: socket.socket, disconnected_cb=None):
+        self.messenger = MessageDispatcher(socket, event_callback=self._event_method, incoming_msg_callback=self._incoming_msg)
+        self.messenger.start()
+        self._disconnected_callback = disconnected_cb
+
+    def stop(self):
+        self.messenger.send_event({'close': 'close'})
+        self.messenger.stop()
+
+    def _incoming_msg(self, *a, **kw):
+        #There is no logic here. We should not be getting requests from the HDD host.
+        pass
 
     def _event_method(self, *a, **kw):
-        pass
+        event = kw.get('event', None)
+        data = kw.get('data', None)
+
+        if 'close' in event:
+            print("Myself is done")
+        elif 'lost_connection' in event:
+            self.messenger.stop()
+            print("We've lost connection!")
+            if(callable(self._disconnected_callback)):
+                self._disconnected_callback(self)
+        elif 'data' in event:
+            #TODO: Do this!
+            pass #This is a user event for us! parse data specially.
+
+    @property
+    def TaskQueue(self) -> TaskQueueInterface:
+        data = self.messenger.send_and_recv({'attribute': 'TaskQueue'}, 10000)
+        return data['TaskQueue'] 
 
     @property
     def serial(self) -> str:
         """
         Returns the serial for the device
         """
-        data = self.messenger.send_and_recv({'get': 'serial'}, 10000)
+        data = self.messenger.send_and_recv({'attribute': 'serial'}, 10000)
         return data['serial']
 
     @property
@@ -41,63 +106,87 @@ class HddRemoteReciever(HddInterface):
         """
         Returns the model for the device
         """
-        raise NotImplementedError
+        data = self.messenger.send_and_recv({'attribute': 'model'}, 10000)
+        return data['model']
 
     @property
     def wwn(self) -> str:
         """
         Returns the WWN that smartctl obtained for the device
         """
-        raise NotImplementedError
+        data = self.messenger.send_and_recv({'attribute': 'wwn'}, 10000)
+        return data['wwn']
 
     @property
     def node(self) -> str:
         """
         Returns the node for the device ("/dev/sdX" for example)
         """
-        raise NotImplementedError
+        data = self.messenger.send_and_recv({'attribute': 'node'}, 10000)
+        return data['node']
 
     @property
     def name(self) -> str:
         """
         Returns the kernel name for the device. ("sdX" for example)
         """
-        raise NotImplementedError
+        data = self.messenger.send_and_recv({'attribute': 'name'}, 10000)
+        return data['name']
 
     @property
     def port(self):
         """
         Returns the port for the device, if applicable.
         """
-        raise NotImplementedError
+        data = self.messenger.send_and_recv({'attribute': 'port'}, 10000)
+        return data['port']
 
     @property
     def capacity(self) -> float:
         """
         Returns the capacity in GiB for the device
         """
-        raise NotImplementedError
+        data = self.messenger.send_and_recv({'attribute': 'capacity'}, 10000)
+        return data['capacity']
 
     @property
     def medium(self) -> str:
         """
         Returns the medium of the device. (SSD or HDD)
         """
-        raise NotImplementedError
+        data = self.messenger.send_and_recv({'attribute': 'medium'}, 10000)
+        return data['medium']
 
     @property
     def seen(self) -> int:
         """
         Returns how many times this drive has been seen
         """
-        raise NotImplementedError
+        data = self.messenger.send_and_recv({'attribute': 'seen'}, 10000)
+        return data['seen']
     
     @seen.setter
     def seen(self, value: int):
         """
         Sets how many times this drive has been seen
         """
-        raise NotImplementedError
+        data = self.messenger.send_and_recv({'attribute': 'seen', 'value': value}, 10000)
+
+    @property
+    def notes(self):
+        """
+        The notes object
+        """
+        data = self.messenger.send_and_recv({'attribute': 'notes'}, 10000)
+        return data['notes']
+
+    @property
+    def smart_data(self):
+        """
+        The smart_data object
+        """
+        data = self.messenger.send_and_recv({'attribute': 'smart_data'}, 10000)
+        return data['smart_data']
 
     def add_task(self, *a, **kw) -> bool:
         """
@@ -135,6 +224,12 @@ class HddRemoteReciever(HddInterface):
         """
         raise NotImplementedError
 
+    def disconnect(self):
+        """
+        Block and finalize anything on the HDD
+        """
+        self.stop()
+
 import threading
 from injectable import injectable
 
@@ -170,6 +265,9 @@ class HddRemoteRecieverServer:
         for c in self._callbacks:
             c(action=action, device=device)
 
+    def _hdd_rem_disconnect(self, device: HddRemoteReciever):
+        self._do_callbacks('remove', device)
+
     def _server(self):
         while self._loop_go:
             try:
@@ -178,7 +276,7 @@ class HddRemoteRecieverServer:
                 pass #The socket timed out. No failure.
             else:
                 if(conn):
-                    new_client = HddRemoteReciever(conn)
+                    new_client = HddRemoteReciever(conn, self._hdd_rem_disconnect)
                     self._do_callbacks('add', new_client)
 
 

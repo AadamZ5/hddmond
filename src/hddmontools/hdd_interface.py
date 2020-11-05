@@ -1,9 +1,57 @@
 from abc import ABC, abstractmethod
+from hddmondtools.hddmon_dataclasses import SmartData
 
 class TaskQueueInterface(ABC):
-    pass
+    
+    @property
+    @abstractmethod
+    def Pause(self) -> bool:
+        """
+        Returns if the queue is paused
+        """
+        raise NotImplementedError
+
+    @Pause.setter
+    @abstractmethod
+    def Pause(self, value: bool):
+        """
+        Sets the pause for the queue
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def Error(self):
+        """
+        If the queue has an error.
+        """
+        raise NotImplementedError
+
+    @Error.setter
+    @abstractmethod
+    def Error(self, value: bool):
+        """
+        Sets the error status for the queue
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def Full(self) -> bool:
+        """
+        If the queue is at capacity
+        """
+        raise NotImplementedError
 
 class HddInterface(ABC):
+
+    @property
+    @abstractmethod
+    def TaskQueue(self) -> TaskQueueInterface:
+        """
+        Returns the TaskQueue interface for the device
+        """
+        raise NotImplementedError
 
     @property
     @abstractmethod
@@ -82,6 +130,29 @@ class HddInterface(ABC):
     def seen(self, value: int):
         """
         Sets how many times this drive has been seen
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def notes(self):
+        """
+        The notes object
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def smart_data(self) -> SmartData:
+        """
+        The smart_data object
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def disconnect(self):
+        """
+        Block and finalize anything on the HDD
         """
         raise NotImplementedError
 

@@ -12,6 +12,7 @@ from .notes import Notes
 from .image import ImageManager
 from .task_service import TaskService
 import datetime
+from hddmontools.hdd_interface import TaskQueueInterface
 from injectable import Autowired, autowired, injectable
 
 class TaskResult(enum.Enum):
@@ -88,7 +89,7 @@ class Task:
         '''
         pass
 
-class TaskQueue: #TODO: Use asyncio for polling and looping!
+class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
     '''
     A container that manages and handles a queue of multiple tasks.
     '''
@@ -314,6 +315,9 @@ class TaskQueue: #TODO: Use asyncio for polling and looping!
     def _taskchanged_cb(self, *args, **kw):
 
         #   Helper method to notify when some aspect of the task queue is changed.
+
+        if not hasattr(self, '_task_change_callback'):
+            return
 
         if self._task_change_callback != None and callable(self._task_change_callback):
             self._task_change_callback(*args, **kw)
