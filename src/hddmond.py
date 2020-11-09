@@ -9,6 +9,7 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.
 sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, PACKAGE_PARENT)))
 
 load_injection_container() #For the `injectable` module. Scans files for injectable items.
+from hddmontools.task import Task, EraseTask, ImageTask
 from hddmondtools.hddmanager import ListModel
 from hddmondtools.websocket import WebsocketServer
 from hddmondtools.multiproc_socket import MultiprocSock

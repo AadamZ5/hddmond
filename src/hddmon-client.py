@@ -18,7 +18,7 @@ class LocalInstance:
         authkey = kw.get('authkey', None)
 
         if(authkey == None):
-            print("WARNING! No authkey was supplied!")
+            #print("WARNING! No authkey was supplied!")
             authkey = b''
         else:
             authkey = bytearray(authkey, 'ascii')

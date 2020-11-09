@@ -7,7 +7,8 @@ import datetime
 import enum
 from .task_service import TaskService
 from .pciaddress import PciAddress
-from .task import Task, TaskQueue
+from .test import Test
+from .task import Task, TaskQueue, ExternalTask
 from .portdetection import PortDetection
 from .notes import Notes
 import proc.core
@@ -224,9 +225,15 @@ class Hdd(HddInterface):
         else:
             return False
 
-    def add_task(self, *a, **kw):
-        pass
-        #self._TaskQueue.AddTask(task)
+    def add_task(self, task_name, parameters, *a, **kw):
+        task_svc = inject(TaskService)
+        task_obj = task_svc.task_types[task_name]
+        parameter_schema = Task.GetTaskParameterSchema(task_obj)
+        if(parameter_schema != None and len(parameters.keys()) <= 0):
+            return {'need_parameters': parameter_schema, 'task': task_name}
+        else:
+            t = task_obj(self, **parameters)
+            self._TaskQueue.AddTask(t)
 
     def abort_task(self, *a, **kw):
         pass
@@ -253,7 +260,13 @@ class Hdd(HddInterface):
         """
         Block and finalize anything on the HDD
         """
-        pass
+        if(self.TaskQueue.CurrentTask != None) and (self.TaskQueue.Error != True):
+                if(isinstance(self.TaskQueue.CurrentTask, ExternalTask)) or (isinstance(self.TaskQueue.CurrentTask, Test)):
+                    print("Detaching task " + str(self.TaskQueue.CurrentTask.name) + " on " + self.serial)
+                    self.TaskQueue.CurrentTask.detach()
+                else:
+                    print("Aborting task " + str(self.TaskQueue.CurrentTask.name) + " (PID: " + str(self.TaskQueue.CurrentTask.PID) + ") on " + self.serial)
+                    self.TaskQueue.CurrentTask.abort(wait=True) #Wait for abortion so database entries can be entered before we disconnect the database.
             
     def __str__(self):
         if(self.serial):

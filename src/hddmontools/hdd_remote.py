@@ -20,7 +20,7 @@ class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemo
         self.messenger.start()
 
     def stop(self):
-        self.messenger.send_event({'close': 'close'})
+        self.messenger.send_event({'event': 'close', 'data': None})
         self.messenger.stop()
 
     def _incoming_msg(self, *a, **kw):
@@ -41,17 +41,31 @@ class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemo
                 ret_val = None
             
             return {attr: ret_val}
+        elif('method' in data):
+            method_name = data['method']
+            args = data.get('args', [])
+            kwargs = data.get('kwargs', {})
+            try:
+                meth_obj = getattr(self.hdd, method_name)
+                ret_val = meth_obj(*args, **kwargs)
+            except AttributeError:
+                print("Reciever asked for {0} attribute, which doesn't exist!".format(method_name))
+                ret_val = None
+            
+            return {method_name: ret_val}
+                
 
     def _event_method(self, *a, **kw):
         event = kw.get('event', None)
         data = kw.get('data', None)
 
-        if 'close' in event:
+        if 'close' == event:
             print("Myself is done")
+            self.messenger.stop()
         elif 'lost_connection' in event:
             self.messenger.stop()
             print("We've lost connection!")
-        elif 'data' in event:
+        elif data:
             #TODO: Parse this!
             pass
 
@@ -64,9 +78,16 @@ class HddRemoteReciever(HddInterface):
         self.messenger = MessageDispatcher(socket, event_callback=self._event_method, incoming_msg_callback=self._incoming_msg)
         self.messenger.start()
         self._disconnected_callback = disconnected_cb
+        self._cache = {}
+        self._get_attribute('serial')
+        self._get_attribute('model')
+        self._get_attribute('node')
+        self._get_attribute('name')
+        self._get_attribute('wwn')
+        self._get_attribute('capacity')
 
     def stop(self):
-        self.messenger.send_event({'close': 'close'})
+        self.messenger.send_event({'event': 'close', 'data': None})
         self.messenger.stop()
 
     def _incoming_msg(self, *a, **kw):
@@ -77,122 +98,162 @@ class HddRemoteReciever(HddInterface):
         event = kw.get('event', None)
         data = kw.get('data', None)
 
-        if 'close' in event:
+        if not event:
+            return
+
+        if 'close' == event:
             print("Myself is done")
         elif 'lost_connection' in event:
             self.messenger.stop()
             print("We've lost connection!")
             if(callable(self._disconnected_callback)):
                 self._disconnected_callback(self)
-        elif 'data' in event:
+                self._disconnected_callback = None
+        elif data:
             #TODO: Do this!
             pass #This is a user event for us! parse data specially.
 
+    def _get_attribute(self, attribute, cache=True):
+        if (attribute in self._cache) and (cache == True):
+            return self._cache[attribute]
+        else:
+            if not self.messenger.running:
+                if attribute in self._cache:
+                    return self._cache[attribute]
+                else:
+                    return None
+            data = self.messenger.send_and_recv({'attribute': attribute}, 10000)
+            if not data:
+                return None
+            if attribute in data:
+                self._cache[attribute] = data[attribute]
+                return self._cache[attribute]
+            else:
+                return None
+
+    def _set_attribute(self, attribute, value, cache=True):
+        if (attribute in self._cache) and (cache == True):
+            return self._cache[attribute]
+        else:
+            if not self.messenger.running:
+                if attribute in self._cache:
+                    return self._cache[attribute]
+                else:
+                    return None
+            data = self.messenger.send_and_recv({'attribute': attribute, 'value': value}, 10000)
+            if not data:
+                return None
+            if attribute in data:
+                self._cache[attribute] = data[attribute]
+                return self._cache[attribute]
+            else:
+                return None
+
+    def _run_method(self, method_name, *a, **kw):
+        if not self.messenger.running:
+            return None
+        
+        data = self.messenger.send_and_recv({'method': method_name, 'args': a, 'kwargs': kw}, 10000)
+        if not data:
+            return None
+        if method_name in data:
+            return data[method_name]
+        else:
+            return None
+
     @property
     def TaskQueue(self) -> TaskQueueInterface:
-        data = self.messenger.send_and_recv({'attribute': 'TaskQueue'}, 10000)
-        return data['TaskQueue'] 
+        return self._get_attribute('TaskQueue')
 
     @property
     def serial(self) -> str:
         """
         Returns the serial for the device
         """
-        data = self.messenger.send_and_recv({'attribute': 'serial'}, 10000)
-        return data['serial']
+        return self._get_attribute('serial')
 
     @property
     def model(self) -> str:
         """
         Returns the model for the device
         """
-        data = self.messenger.send_and_recv({'attribute': 'model'}, 10000)
-        return data['model']
+        return self._get_attribute('model')
 
     @property
     def wwn(self) -> str:
         """
         Returns the WWN that smartctl obtained for the device
         """
-        data = self.messenger.send_and_recv({'attribute': 'wwn'}, 10000)
-        return data['wwn']
+        return self._get_attribute('wwn')
 
     @property
     def node(self) -> str:
         """
         Returns the node for the device ("/dev/sdX" for example)
         """
-        data = self.messenger.send_and_recv({'attribute': 'node'}, 10000)
-        return data['node']
+        return self._get_attribute('node')
 
     @property
     def name(self) -> str:
         """
         Returns the kernel name for the device. ("sdX" for example)
         """
-        data = self.messenger.send_and_recv({'attribute': 'name'}, 10000)
-        return data['name']
+        return self._get_attribute('name')
 
     @property
     def port(self):
         """
         Returns the port for the device, if applicable.
         """
-        data = self.messenger.send_and_recv({'attribute': 'port'}, 10000)
-        return data['port']
+        return self._get_attribute('port')
 
     @property
     def capacity(self) -> float:
         """
         Returns the capacity in GiB for the device
         """
-        data = self.messenger.send_and_recv({'attribute': 'capacity'}, 10000)
-        return data['capacity']
+        return self._get_attribute('capacity')
 
     @property
     def medium(self) -> str:
         """
         Returns the medium of the device. (SSD or HDD)
         """
-        data = self.messenger.send_and_recv({'attribute': 'medium'}, 10000)
-        return data['medium']
+        return self._get_attribute('medium')
 
     @property
     def seen(self) -> int:
         """
         Returns how many times this drive has been seen
         """
-        data = self.messenger.send_and_recv({'attribute': 'seen'}, 10000)
-        return data['seen']
+        return self._get_attribute('seen', cache=False)
     
     @seen.setter
     def seen(self, value: int):
         """
         Sets how many times this drive has been seen
         """
-        data = self.messenger.send_and_recv({'attribute': 'seen', 'value': value}, 10000)
+        data = self._set_attribute('seen', value)
 
     @property
     def notes(self):
         """
         The notes object
         """
-        data = self.messenger.send_and_recv({'attribute': 'notes'}, 10000)
-        return data['notes']
+        return self._get_attribute('notes', cache=False)
 
     @property
     def smart_data(self):
         """
         The smart_data object
         """
-        data = self.messenger.send_and_recv({'attribute': 'smart_data'}, 10000)
-        return data['smart_data']
+        return self._get_attribute('smart_data', cache=False)
 
-    def add_task(self, *a, **kw) -> bool:
+    def add_task(self, task_name, parameters, *a, **kw) -> bool:
         """
         Adds a task to the HDD with any possible parameters sent in keyword arguments.
         """
-        raise NotImplementedError
+        return self._run_method('add_task', task_name=task_name, parameters=parameters, *a, **kw)
 
     def abort_task(self) -> bool: 
         """
@@ -210,19 +271,19 @@ class HddRemoteReciever(HddInterface):
         """
         Updates the SMART info for a drive.
         """
-        raise NotImplementedError
+        return self._run_method('update_smart')
 
     def capture_attributes(self):
         """
         Captures SMART attributes and returns the list.
         """
-        raise NotImplementedError
+        return self._run_method('capture_attributes')
 
     def get_available_tasks(self):
         """
         Gets the tasks that are available to start on this device. Should return a dictionary of display_name: class_name
         """
-        raise NotImplementedError
+        return self._run_method('get_available_tasks')
 
     def disconnect(self):
         """

@@ -8,6 +8,11 @@ import json
 import jsonpickle
 import threading
 class MessageDispatcher:
+
+    @property
+    def running(self):
+        return self._loop_go
+
     def __init__(self, socket: socket.socket, incoming_msg_callback=None, event_callback=None, polling_interval_seconds=5):
         """
         incoming_msg_callback should be supplied expecting kwargs `data`, and should return a response.
@@ -59,14 +64,16 @@ class MessageDispatcher:
                 #Sir, we have a problem.
                 self._loop_go = False
                 self._event_callback(event='lost_connection', data='The connection has been dropped')
-                break
+                return
 
             if (datetime.datetime.now() - self._last_msg_recieved_at) >= self._poll_interval:
                 self._send_ping()
                 self._ping_counter += 1
             try:
-                m_bytes = self._socket.recv(1024) 
+                m_bytes = self._socket.recv(16384) 
             except socket.timeout:
+                pass
+            except socket.error:
                 pass
             else:
                 try:
@@ -96,14 +103,14 @@ class MessageDispatcher:
                                 self._event_callback(event='lost_connection', data='The connection has been dropped')
                     elif "event" in m: #Events do not need responded to
                         if(callable(self._event_callback)):
-                            self._event_callback(data=data)
+                            self._event_callback(**data)
                     elif "pong" in m:
                         self._ping_counter = 0
                         self._last_msg_recieved_at = datetime.datetime.now()
                     elif "ping" in m:
                         self._last_msg_recieved_at = datetime.datetime.now()
                         self._send_pong()
-        print("A messenger exited.")
+        print("Messenger {0} exited.".format(str(self._socket)))
 
 
     def _process_msg(self, key, data):
@@ -167,6 +174,7 @@ class MessageDispatcher:
             else:
                 if timeout_ms != None:
                     if (datetime.datetime.now() - time_start) > timeout:
+                        print("Timeout while waiting for message {0} ({1})".format(key, message))
                         return None
                 time.sleep(0.001)
 

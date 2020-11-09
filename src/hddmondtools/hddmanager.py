@@ -7,6 +7,7 @@ import proc.core
 import pyudev
 from pySMART import Device
 from hddmontools.hdd import Hdd, HddInterface
+from hddmontools.task_service import TaskService
 from hddmontools.task import ExternalTask, Task, ImageTask, EraseTask
 from hddmontools.test import Test
 from hddmontools.image import DiskImage, Partition
@@ -21,8 +22,7 @@ from .websocket import WebsocketServer
 from .multiproc_socket import MultiprocSock
 from .hddmon_dataclasses import HddData, TaskQueueData, TaskData, ImageData
 from .genericdatabase import GenericDatabase
-from hddmontools.task_service import TaskService
-from hddmontools.hdd_remote import HddRemoteRecieverServer
+from hddmontools.hdd_remote import HddRemoteRecieverServer, HddRemoteReciever
 from injectable import inject
 
 import inspect
@@ -36,6 +36,7 @@ class ListModel:
         self.updateInterval = 3 #Interval for scanning for running SMART tests
         self.task_change_outside_callback = taskChangedCallback #callback for when any hdd's task stuff calls back
         self.task_svc = inject(TaskService)
+        self.task_svc.initialize()
         self.hdds = [] #The list of hdd's (HddInterface class)
         self.blacklist_hdds = self.load_blacklist_file() #The list of hdd's to ignore when seen
         self._udev_context = pyudev.Context() #The UDEV context. #TODO: Autowire?
@@ -54,19 +55,20 @@ class ListModel:
     
     def remote_hdd_callback(self, action, device: HddInterface):
         if('add' in action):
-            print("Got a remote device!")
+            
             if device.serial in (h.serial for h in self.hdds):
+                print("Got a remote device that already exists locally. Rejecting...")
                 device.disconnect()
             else:
+                print("Incomming connection from remote device {0}".format(device.serial))
                 self.hdds.append(device)
-            if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
-                self.task_change_outside_callback({'update': 'add', 'data': HddData.FromHdd(device)})
+                if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
+                    self.task_change_outside_callback({'update': 'add', 'data': HddData.FromHdd(device)})
         elif('remove' in action):
-            self.hdds.remove(device)
+            if device in self.hdds:
+                self.hdds.remove(device)
             if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
                 self.task_change_outside_callback({'update': 'remove', 'data': HddData.FromHdd(device)})                    
-
-
 
     def task_change_callback(self, hdd: Hdd, *args, **kwargs):
 
@@ -204,31 +206,46 @@ class ListModel:
         serials = []
         task_obj = None
         parameter_data = dict()
+
+        #This function can be used to multicast tasks to HDDs. Since
+        #we allow remote HDDs to connect, which may have a different
+        #task set, we have to check per-HDD what tasks are available.
+
+
+        #Get the serials to task
         if('serials' in kw):
             serials = kw['serials']
 
+        #Get the parameters for the task
         if('parameters' in kw):
             parameter_data = kw['parameters']
 
+        hdds_to_task = []
+        for h in self.hdds:
+            if h.serial in serials:
+                hdds_to_task.append(h)
+
         if('task' in kw):
             task_name = kw['task']
-            if not (task_name in self.task_svc.task_types.keys()):
-                return False
-            task_obj = self.task_svc.task_types[task_name]
-            parameter_schema = Task.GetTaskParameterSchema(task_obj)
-            if(parameter_schema != None and len(parameter_data.keys()) <= 0):
-                return {'need_parameters': parameter_schema, 'serials': serials, 'task': task_name}
         else:
             return {'error': 'No task was specified!'}
 
-        for h in self.hdds:
-            if h.serial in serials:
-                t = task_obj(h, **parameter_data)
-                h.add_task(t)
-                print("Queued task {0} on {1}".format(t.name, h.serial))
+        
+        
+        errors = []
+        for h in hdds_to_task:
+            if not (task_name in h.get_available_tasks().values()):
+                errors.append({h.serial: "Task {0} doesn't exist for {1}".format(task_name, h.serial)})
+            else:
+                response = h.add_task(task_name=task_name, parameters=parameter_data)
+                if response != None and 'need_parameters' in response:
+                    response['serials'] = serials
+                    return response
+                else:
+                    print("Queued task {0} on {1}".format(task_name, h.serial))
             
         l.release()
-        return True
+        return {'errors': errors}
 
     def abortTaskBySerial(self, *args, **kw):
         l = threading.Lock()
@@ -460,17 +477,9 @@ class ListModel:
         self._loopgo = False
         print("Stopping udev observer...")
         self.observer.stop()
-        print("Stopping tasks...")
+        print("Stopping HDDs...")
         for h in self.hdds:
-            print("Stopping tasks on {0}".format(h.serial))
-            h.TaskQueue.Pause = True
-            if(h.TaskQueue.CurrentTask != None) and (h.TaskQueue.Error != True):
-                if(isinstance(h.TaskQueue.CurrentTask, ExternalTask)) or (isinstance(h.TaskQueue.CurrentTask, Test)):
-                    print("Detaching task " + str(h.TaskQueue.CurrentTask.name) + " on " + h.serial)
-                    h.TaskQueue.CurrentTask.detach()
-                else:
-                    print("Aborting task " + str(h.TaskQueue.CurrentTask.name) + " (PID: " + str(h.TaskQueue.CurrentTask.PID) + ") on " + h.serial)
-                    h.TaskQueue.CurrentTask.abort(wait=True) #Wait for abortion so database entries can be entered before we disconnect the database.
+            print("\tShutting down {0}...".format(h.serial))
             h.disconnect()
 
         print("Disconnecting database...")
