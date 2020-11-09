@@ -132,22 +132,19 @@ class HddRemoteReciever(HddInterface):
                 return None
 
     def _set_attribute(self, attribute, value, cache=True):
-        if (attribute in self._cache) and (cache == True):
-            return self._cache[attribute]
-        else:
-            if not self.messenger.running:
-                if attribute in self._cache:
-                    return self._cache[attribute]
-                else:
-                    return None
-            data = self.messenger.send_and_recv({'attribute': attribute, 'value': value}, 10000)
-            if not data:
-                return None
-            if attribute in data:
-                self._cache[attribute] = data[attribute]
+        if not self.messenger.running:
+            if attribute in self._cache:
                 return self._cache[attribute]
             else:
                 return None
+        data = self.messenger.send_and_recv({'attribute': attribute, 'value': value}, 10000)
+        if not data:
+            return None
+        if attribute in data:
+            self._cache[attribute] = data[attribute]
+            return self._cache[attribute]
+        else:
+            return None
 
     def _run_method(self, method_name, *a, **kw):
         if not self.messenger.running:
