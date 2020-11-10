@@ -149,6 +149,15 @@ class HddInterface(ABC):
         """
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def locality(self) -> str:
+        """
+        Some string representing where the HDD exists. 
+        HDDs on the same machine as the server should report 'local'
+        """
+        raise NotImplementedError
+
     @abstractmethod
     def disconnect(self):
         """
@@ -171,7 +180,7 @@ class HddInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def add_task_changed_callback(self):
+    def add_task_changed_callback(self, *a, **kw):
         """
         Registers a callback for when tasks change on a device.
         """

@@ -61,14 +61,9 @@ class ListModel:
                 device.disconnect()
             else:
                 print("Incomming connection from remote device {0}".format(device.serial))
-                self.hdds.append(device)
-                if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
-                    self.task_change_outside_callback({'update': 'add', 'data': HddData.FromHdd(device)})
+                self.addHdd(device)
         elif('remove' in action):
-            if device in self.hdds:
-                self.hdds.remove(device)
-            if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
-                self.task_change_outside_callback({'update': 'remove', 'data': HddData.FromHdd(device)})                    
+            self.removeHddStr(device.node)
 
     def task_change_callback(self, hdd: Hdd, *args, **kwargs):
 
@@ -166,9 +161,8 @@ class ListModel:
             serial = d.get('serial', None)
             model = d.get('model', None)
             node = d.get('node', None)
-            if serial == hdd.serial or model == hdd.model or node == hdd.node:
+            if serial == hdd.serial or model == hdd.model or (node == hdd.node and hdd.locality == 'local'):
                 return True
-                break
         return False
             
     def sendHdds(self, *args, **kw):
@@ -402,17 +396,19 @@ class ListModel:
 
         print("Finished adding existing devices")
             
-    def addHdd(self, hdd: Hdd):
+    def addHdd(self, hdd: HddInterface):
         if(self.check_in_blacklist(hdd)):
+            hdd.disconnect()
             del hdd
             return False
 
         t = self.findProcAssociated(hdd.name)
         if(t != None):
-            hdd.TaskQueue.AddTask(ExternalTask(hdd, t.pid))
+            if isinstance(hdd, Hdd):
+                hdd.TaskQueue.AddTask(ExternalTask(hdd, t.pid))
         self.hdds.append(hdd)
         if(self.AutoShortTest == True) and (not isinstance(hdd.TaskQueue.CurrentTask, Test)):
-            hdd.ShortTest()
+            pass #No autotests yet.
         hdd.add_task_changed_callback(self.task_change_callback)
 
         if(self.database != None):

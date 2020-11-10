@@ -113,7 +113,7 @@ class HddRemoteReciever(HddInterface):
             #TODO: Do this!
             pass #This is a user event for us! parse data specially.
 
-    def _get_attribute(self, attribute, cache=True):
+    def _get_attribute(self, attribute, cache=True, cache_fallback=True):
         if (attribute in self._cache) and (cache == True):
             return self._cache[attribute]
         else:
@@ -124,14 +124,20 @@ class HddRemoteReciever(HddInterface):
                     return None
             data = self.messenger.send_and_recv({'attribute': attribute}, 10000)
             if not data:
-                return None
+                if cache_fallback == True:
+                    if attribute in self._cache:
+                        return self._cache[attribute]
+                    else:
+                        return None
+                else:
+                    return None
             if attribute in data:
                 self._cache[attribute] = data[attribute]
                 return self._cache[attribute]
             else:
                 return None
 
-    def _set_attribute(self, attribute, value, cache=True):
+    def _set_attribute(self, attribute, value, cache=True, cache_fallback=True):
         if not self.messenger.running:
             if attribute in self._cache:
                 return self._cache[attribute]
@@ -139,21 +145,34 @@ class HddRemoteReciever(HddInterface):
                 return None
         data = self.messenger.send_and_recv({'attribute': attribute, 'value': value}, 10000)
         if not data:
-            return None
+            if cache_fallback == True:
+                if attribute in self._cache:
+                    return self._cache[attribute]
+                else:
+                    return None
+            else:
+                return None
         if attribute in data:
             self._cache[attribute] = data[attribute]
             return self._cache[attribute]
         else:
             return None
 
-    def _run_method(self, method_name, *a, **kw):
+    def _run_method(self, method_name, cache_fallback=True, *a, **kw):
         if not self.messenger.running:
             return None
         
         data = self.messenger.send_and_recv({'method': method_name, 'args': a, 'kwargs': kw}, 10000)
         if not data:
-            return None
+            if cache_fallback == True:
+                if method_name in self._cache:
+                    return self._cache[method_name]
+                else:
+                    return None
+            else:
+                return None
         if method_name in data:
+            self._cache[method_name] = data[method_name]
             return data[method_name]
         else:
             return None
@@ -161,6 +180,14 @@ class HddRemoteReciever(HddInterface):
     @property
     def TaskQueue(self) -> TaskQueueInterface:
         return self._get_attribute('TaskQueue')
+
+    @property
+    def locality(self) -> str:
+        """
+        Some string representing where the HDD exists. 
+        HDDs on the same machine as the server should report 'local'
+        """
+        return str(self.messenger._socket)
 
     @property
     def serial(self) -> str:
@@ -250,19 +277,19 @@ class HddRemoteReciever(HddInterface):
         """
         Adds a task to the HDD with any possible parameters sent in keyword arguments.
         """
-        return self._run_method('add_task', task_name=task_name, parameters=parameters, *a, **kw)
+        return self._run_method('add_task', cache_fallback=False, task_name=task_name, parameters=parameters, *a, **kw)
 
     def abort_task(self) -> bool: 
         """
         Should abort a currently running task.
         """
-        raise NotImplementedError
+        return self._run_method('abort_task', cache_fallback=False)
 
-    def add_task_changed_callback(self):
+    def add_task_changed_callback(self, *a, **kw):
         """
         Registers a callback for when tasks change on a device.
         """
-        raise NotImplementedError
+        print("No callbacks for tasks on remote HDDs yet!")
 
     def update_smart(self):
         """

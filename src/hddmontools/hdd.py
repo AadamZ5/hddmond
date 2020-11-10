@@ -126,6 +126,14 @@ class Hdd(HddInterface):
         The smart_data object
         """
         return SmartData.FromSmartDev(self._smart)
+        
+    @property
+    def locality(self) -> str:
+        """
+        Some string representing where the HDD exists. 
+        HDDs on the same machine as the server should report 'local'
+        """
+        return 'local'
 
     def __getstate__(self):
         # Copy the object's state from self.__dict__ which contains
@@ -243,7 +251,7 @@ class Hdd(HddInterface):
             if c != None and callable(c):
                 c(self, *args, **kw)
 
-    def add_task_changed_callback(self, callback) -> None:
+    def add_task_changed_callback(self, callback, *a, **kw) -> None:
         self._task_changed_callbacks.append(callback)
 
     def update_smart(self) -> None:
