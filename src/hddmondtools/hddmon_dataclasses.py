@@ -161,6 +161,7 @@ class HddData(Interface):
     smart: SmartData
     notes: List[NoteData]
     seen: int
+    locality: str
 
     @staticmethod
     def FromHdd(hdd): #HddInterface
@@ -169,7 +170,7 @@ class HddData(Interface):
         #     #notes.append(NoteData.FromNote(n))
         #     pass
         try:
-            return HddData(hdd.serial, hdd.model, hdd.wwn, hdd.capacity, None, str(hdd.smart_data.assessment), TaskQueueData.FromTaskQueue(hdd.TaskQueue), hdd.node, str(hdd.port), hdd.smart_data, notes, hdd.seen)
+            return HddData(hdd.serial, hdd.model, hdd.wwn, hdd.capacity, None, str(hdd.smart_data.assessment), TaskQueueData.FromTaskQueue(hdd.TaskQueue), hdd.node, str(hdd.port), hdd.smart_data, notes, hdd.seen, hdd.locality)
         except Exception as e:
             print("Error while parsing HDD {0} {1}".format(hdd.serial, hdd.node))
             print(str(e))

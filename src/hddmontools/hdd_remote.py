@@ -5,6 +5,7 @@ import socket
 from hddmontools.hdd_interface import HddInterface, TaskQueueInterface
 from hddmontools.hdd import Hdd
 from hddmontools.message_dispatcher import MessageDispatcher
+from hddmontools.config_service import ConfigService
 
 
 
@@ -15,6 +16,7 @@ class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemo
     """
     def __init__(self, hdd:Hdd, address):
         self.hdd = hdd
+        self.hdd.add_task_changed_callback(self._tc_callback)
         self._socket = socket.create_connection(address, 10000)
         self.messenger = MessageDispatcher(self._socket, incoming_msg_callback=self._incoming_msg, event_callback=self._event_method)
         self.messenger.start()
@@ -53,7 +55,12 @@ class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemo
                 ret_val = None
             
             return {method_name: ret_val}
-                
+            
+
+    def _tc_callback(self, *a, **kw):
+        #kw has the data we want.
+        self.messenger.send_event({'event': 'task_change', 'data': kw})
+
 
     def _event_method(self, *a, **kw):
         event = kw.get('event', None)
@@ -78,6 +85,7 @@ class HddRemoteReciever(HddInterface):
         self.messenger = MessageDispatcher(socket, event_callback=self._event_method, incoming_msg_callback=self._incoming_msg)
         self.messenger.start()
         self._disconnected_callback = disconnected_cb
+        self._task_change_callbacks = []
         self._cache = {}
         self._get_attribute('serial')
         self._get_attribute('model')
@@ -89,6 +97,11 @@ class HddRemoteReciever(HddInterface):
     def stop(self):
         self.messenger.send_event({'event': 'close', 'data': None})
         self.messenger.stop()
+
+    def _task_change_callback(self, *a, **kw):
+        for cb in self._task_change_callbacks:
+            if callable(cb):
+                cb(self, *a, **kw)
 
     def _incoming_msg(self, *a, **kw):
         #There is no logic here. We should not be getting requests from the HDD host.
@@ -109,9 +122,8 @@ class HddRemoteReciever(HddInterface):
             if(callable(self._disconnected_callback)):
                 self._disconnected_callback(self)
                 self._disconnected_callback = None
-        elif data:
-            #TODO: Do this!
-            pass #This is a user event for us! parse data specially.
+        elif 'task_change' in event:
+            self._task_change_callback(**data)
 
     def _get_attribute(self, attribute, cache=True, cache_fallback=True):
         if (attribute in self._cache) and (cache == True):
@@ -285,11 +297,11 @@ class HddRemoteReciever(HddInterface):
         """
         return self._run_method('abort_task', cache_fallback=False)
 
-    def add_task_changed_callback(self, *a, **kw):
+    def add_task_changed_callback(self, callback, *a, **kw):
         """
         Registers a callback for when tasks change on a device.
         """
-        print("No callbacks for tasks on remote HDDs yet!")
+        self._task_change_callbacks.append(callback)
 
     def update_smart(self):
         """
@@ -316,7 +328,7 @@ class HddRemoteReciever(HddInterface):
         self.stop()
 
 import threading
-from injectable import injectable
+from injectable import injectable, inject
 
 @injectable(singleton=True)
 class HddRemoteRecieverServer:
@@ -328,7 +340,9 @@ class HddRemoteRecieverServer:
         else:
             self.discovery_server = None
         
-        self._tcp_address = ('', 56567)
+        cfg_svc = inject(ConfigService)
+        port = cfg_svc.data["hddmon_remote_host"]["port"]
+        self._tcp_address = ('', port)
         self.server = socket.create_server(self._tcp_address, family=socket.AF_INET)
         #self.server.setsockopt(socket.SOL_SOCKET, socket.SOCK_NONBLOCK, 1)# No block
         self.server.settimeout(5)# 5 second timeout

@@ -5,6 +5,9 @@ import websockets
 from .genericserver import GenericServer
 import jsonpickle
 
+from injectable import inject
+from hddmontools.config_service import ConfigService
+
 
 class ClientDataMulticaster: #This is used to keep track of all clients connected, to allow multicasting. 
     def __init__(self):
@@ -38,6 +41,9 @@ class WebsocketServer(GenericServer):
 
         self.loopthread = None
         self.ws = None
+
+        cfg_svc = inject(ConfigService)
+        self.port = cfg_svc.data["websocket_host"]["port"]
 
         self.clientlist = {} #{address: websocket, ...}
         self.clientdata_multicast = ClientDataMulticaster()
@@ -98,7 +104,8 @@ class WebsocketServer(GenericServer):
 
     def _make_server(self, loop: AbstractEventLoop):
         asyncio.set_event_loop(loop)
-        self.ws = loop.run_until_complete(websockets.serve(self.handler, "0.0.0.0", 8765))
+        
+        self.ws = loop.run_until_complete(websockets.serve(self.handler, "0.0.0.0", self.port))
         loop.run_forever()
 
     def broadcast_data(self, data, *a, **kw):

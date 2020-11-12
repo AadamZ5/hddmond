@@ -22,10 +22,9 @@ from hddmontools.image import ImageManager, CustomerImage, DiskImage
 class App:
     def __init__(self):
         self.images = inject(ImageManager)
-        self.list = ListModel(taskChangedCallback = self.task_changed_cb, database=CouchDatabase("http://192.168.1.2:5984", "vuser", "Velocity_2017!"))
+        self.list = ListModel(taskChangedCallback = self.task_changed_cb)
         self.mps = MultiprocSock()
         self.ws = WebsocketServer()
-
         #TODO: Remove MultiProcess socket and use only websocket
         self.mps.register_command('erase', None)
         self.mps.register_command('shorttest', None)
@@ -39,7 +38,6 @@ class App:
         self.mps.register_command('modifyqueue', self.list.modifyTaskQueue)
         self.mps.register_command('pausequeue', self.list.pauseQueue)
         self.mps.register_command('blacklist', self.list.blacklist)
-        
         #self.ws.register_command('image', self.list.imageBySerial)
         self.ws.register_command('gettasks', self.list.sendTaskTypes)
         self.ws.register_command('addtask', self.list.taskBySerial)
@@ -51,10 +49,8 @@ class App:
         self.ws.register_command('blacklisted', self.list.sendBlacklist)
         self.ws.register_command('upload_image', None)
         self.ws.register_command('upload_image_done', None)
-
     def ws_update(self, payload):
         self.ws.broadcast_data(payload)
-
     def image_shim(self, *args, **kw):
         imags = []
         for i in self.images.added_images:
@@ -63,20 +59,17 @@ class App:
         for i in self.images.discovered_images:
             disc.append(ImageData.FromDiskImage(i))
         return {'onboarded_images': imags, 'discovered_images': disc}
-
     def start(self):
         self.images.start()
         self.mps.start()
         self.ws.start()
         self.list.start()
-
     def stop(self, *args, **kwargs):
         print("Stopping...")
         self.mps.stop()
         self.ws.stop()
         self.list.stop()
         self.images.stop()
-
     def task_changed_cb(self, payload):
         self.mps.broadcast_data(payload)
         self.ws_update(payload)

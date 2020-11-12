@@ -5,10 +5,12 @@ PACKAGE_PARENT = '..'
 SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__))))
 sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, PACKAGE_PARENT)))
 
-from injectable import load_injection_container
-load_injection_container('./') #For the `injectable` module. Scans files for injectable items.
+from injectable import load_injection_container, inject, InjectionContainer
+load_injection_container() #For the `injectable` module. Scans files for injectable items.
 
 from hddmontools.hdd import Hdd
+from hddmontools.task_service import TaskService
+from hddmontools.task import Task
 from hddmontools.hdd_remote import HddRemoteHost
 import time
 class LocalInstance:
@@ -23,10 +25,19 @@ class LocalInstance:
         else:
             authkey = bytearray(authkey, 'ascii')
 
+        task_svc = inject(TaskService)
+        print(f"Tasks ready: {str(task_svc.task_types)}")
+        print(f"{InjectionContainer.LOADED_FILEPATHS}")
+
         self.node = kw.get('node', None)
         self.hdd = Hdd(self.node)
+        self.hdd.add_task_changed_callback(self.tc_c)
         self.hdd_wrapper = HddRemoteHost(self.hdd, self.server_address)
         self.hdd_wrapper.messenger._server_loop_thread.join() 
+    
+    def tc_c(self, *a, **kw):
+        print(str(a))
+        print(str(kw))
 
 if __name__ == "__main__":
     verbose = False
@@ -58,8 +69,8 @@ if __name__ == "__main__":
             verbose = True
         elif currentArgument in ("-h", "--help"):
             print("Let me help you,")
-            print("Launch this program with at least the -d command to specify a disk")
-            print("ex: -d /dev/sda")
+            print("Launch this program with at least the -d, -a, and -p commands to specify a disk, address, and port to connect to.")
+            print("ex: -d /dev/sda, -a 127.0.0.1 -p 56567")
             print("Valid options: ")
             for op in gnuOptions:
                 print("--" + str(op))

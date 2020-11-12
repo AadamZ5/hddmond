@@ -22,6 +22,7 @@ from .websocket import WebsocketServer
 from .multiproc_socket import MultiprocSock
 from .hddmon_dataclasses import HddData, TaskQueueData, TaskData, ImageData
 from .genericdatabase import GenericDatabase
+from .couchdb import CouchDatabase
 from hddmontools.hdd_remote import HddRemoteRecieverServer, HddRemoteReciever
 from injectable import inject
 
@@ -32,7 +33,7 @@ class ListModel:
     Data model that holds hdd list.
     """
 
-    def __init__(self, taskChangedCallback = None, database: GenericDatabase = None):
+    def __init__(self, taskChangedCallback = None):
         self.updateInterval = 3 #Interval for scanning for running SMART tests
         self.task_change_outside_callback = taskChangedCallback #callback for when any hdd's task stuff calls back
         self.task_svc = inject(TaskService)
@@ -47,7 +48,7 @@ class ListModel:
         self.AutoShortTest = False #Do auto short test on new detected drives?
         self._loopgo = True #Condition for the SMART scan loop
         self.stuffRunning = False #Is stuff running? I don't know
-        self.database = database #The database #TODO: Autowire!
+        self.database = inject(CouchDatabase) #The database #TODO: Autowire!
 
         if self.database != None:
             if( not self.database.connect()):

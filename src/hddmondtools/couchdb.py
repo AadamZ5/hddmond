@@ -1,8 +1,9 @@
-from .genericdatabase import GenericDatabase
+from hddmondtools.genericdatabase import GenericDatabase
 from cloudant import CouchDB
-from .hddmon_dataclasses import HddData, TaskData, AttributeData, SmartData
+from hddmondtools.hddmon_dataclasses import HddData, TaskData, AttributeData, SmartData
+from hddmontools.config_service import ConfigService
 import datetime
-from injectable import injectable, injectable_factory
+from injectable import injectable, injectable_factory, inject
 
 class CouchDatabase(GenericDatabase):
     def __init__(self, address_with_port, user, passw):
@@ -140,3 +141,12 @@ class CouchDatabase(GenericDatabase):
             r_hdd['smart_captures'] = []
         r_hdd['smart_captures'].append(sc_doc['_id'])
         r_hdd.save()
+
+@injectable_factory(CouchDatabase)
+def couchdb_factory():
+    cfg_svc = inject(ConfigService)
+    address = cfg_svc.data['couchdb']['address']
+    port = cfg_svc.data['couchdb']['port']
+    user = cfg_svc.data['couchdb']['user']
+    passw = cfg_svc.data['couchdb']['password']
+    return CouchDatabase(f"{address}:{port}", user, passw)

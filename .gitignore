@@ -7,3 +7,5 @@ __pycache__
 .vscode
 .mypy_cache
 env
+config.json
+blacklist.json
