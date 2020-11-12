@@ -15,7 +15,15 @@ class ConfigService:
         try:
             with self._path.open() as fd:
                 self._data = json.load(fd)
-        except FileNotFoundError as e:
-            print(f"Please ensure a config file exists at {self._path}!")
+        except FileNotFoundError:
+            print(f"Warning! No config file exists at {self._path}!")
+            print("Be sure to specify configuration either environment variables or cmd line arguments!")
+            print("A config file should be used as a fallback!")
+            self._data = {}
+        except json.JSONDecodeError as e:
+            print(f"There was an error while parsing {self._path}!")
             print(str(e))
-            exit(1)
+            self._data = {}
+
+    def override_env_var(self):
+        pass
