@@ -1,17 +1,16 @@
 version: "3"
 
 services:
-    # hddmond:
-    #     container_name: hddmond
-    #     image: python:3.8-slim
-    #     ports: 
-    #         - 8765:8765
-    #     restart: unless-stopped
-    #     volumes: 
-    #         - "./hddmond:/etc/hddmon/"
-    #     working_dir: "/etc/hddmon/"
-    #     entrypoint: "sh /etc/hddmon/docker_install.sh"
-    #     privileged: true
+    hddmond:
+        container_name: hddmond
+        image: hddmond:latest
+        ports: 
+            - 8765:8765
+            - 56567:56567
+        restart: unless-stopped
+        volumes: 
+            - "./src/config:/etc/hddmon/config"
+        privileged: true
     # hddmond-images:
     #     build: 
     #         context: .

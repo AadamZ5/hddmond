@@ -25,6 +25,7 @@ from .genericdatabase import GenericDatabase
 from .couchdb import CouchDatabase
 from hddmontools.hdd_remote import HddRemoteRecieverServer, HddRemoteReciever
 from injectable import inject
+from pathlib import Path
 
 import inspect
 
@@ -48,7 +49,7 @@ class ListModel:
         self.AutoShortTest = False #Do auto short test on new detected drives?
         self._loopgo = True #Condition for the SMART scan loop
         self.stuffRunning = False #Is stuff running? I don't know
-        self.database = inject(CouchDatabase) #The database #TODO: Autowire!
+        self.database = inject(CouchDatabase) #The database
 
         if self.database != None:
             if( not self.database.connect()):
@@ -97,7 +98,7 @@ class ListModel:
         if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
             self.task_change_outside_callback({'update': action, 'data': {'serial': hdd.serial, 'taskqueue': Tqd}})
 
-    def database_task_finished(self, hdd:Hdd, task_queue_data: TaskQueueData):
+    def database_task_finished(self, hdd:HddInterface, task_queue_data: TaskQueueData):
         if self.database == None:
             return
 
@@ -141,7 +142,8 @@ class ListModel:
         
         old_list.extend(need_to_add)
 
-        with open('blacklist.json', 'w+') as fd:
+        path = Path(__file__).parent / '../config/blacklist.json'
+        with path.open('w+') as fd:
             json.dump(old_list, fd)
         
         self.blacklist_hdds = self.load_blacklist_file()
@@ -149,10 +151,11 @@ class ListModel:
     def load_blacklist_file(self):
         import json
         dict_list = []
-        if not os.path.exists('blacklist.json'):
+        path = Path(__file__).parent / '../config/blacklist.json'
+        if not path.exists('blacklist.json'):
             return []
 
-        with open('blacklist.json', 'r') as fd:
+        with path.open() as fd:
             dict_list = json.load(fd)
 
         return dict_list
@@ -310,7 +313,7 @@ class ListModel:
             for h in self.hdds:
                 if s == h.serial:
                     self.blacklist_hdds.append({'serial': h.serial, 'model': h.model})
-                    self.hdds.remove(h)
+                    self.removeHddHdd(h)
                     break
 
         self.update_blacklist_file()

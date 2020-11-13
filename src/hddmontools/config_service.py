@@ -10,8 +10,9 @@ class ConfigService:
         return self._data
 
     def __init__(self):
-        self._data = None
+        self._data = {}
         self._path = Path(__file__).parent / '../config/config.json'
+
         try:
             with self._path.open() as fd:
                 self._data = json.load(fd)
