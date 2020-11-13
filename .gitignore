@@ -1,2 +1,11 @@
 .vscode/.ropeproject/config.py
 .vscode/settings.json
+./log
+*.log
+./*.log
+__pycache__
+.vscode
+.mypy_cache
+env
+config.json
+blacklist.json

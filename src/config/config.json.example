@@ -1,0 +1,14 @@
+{
+    "couchdb": {
+        "address": "127.0.0.1",
+        "port": 12345,
+        "user": "admin",
+        "password": "password"
+    },
+    "websocket_host": {
+        "port": 12346
+    },
+    "hddmon_remote_host": {
+        "port": 12347
+    }
+}

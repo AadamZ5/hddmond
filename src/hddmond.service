@@ -1,0 +1,16 @@
+[Unit]
+Description=hddmon daemon
+Requires=udev.service
+Wants=docker.service
+
+[Service]
+ExecStart=python3.8 /etc/hddmon/hddmond.py
+Restart=always
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
+Alias=hddmond
+
+
