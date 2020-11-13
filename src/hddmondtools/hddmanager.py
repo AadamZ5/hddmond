@@ -11,6 +11,7 @@ from hddmontools.task_service import TaskService
 from hddmontools.task import ExternalTask, Task, ImageTask, EraseTask
 from hddmontools.test import Test
 from hddmontools.image import DiskImage, Partition
+from hddmontools.smartctl_hdd_detector import SmartctlDetector
 import pySMART
 import time
 import threading
@@ -37,13 +38,18 @@ class ListModel:
     def __init__(self, taskChangedCallback = None):
         self.updateInterval = 3 #Interval for scanning for running SMART tests
         self.task_change_outside_callback = taskChangedCallback #callback for when any hdd's task stuff calls back
-        self.task_svc = inject(TaskService)
+        self.task_svc = TaskService()
         self.task_svc.initialize()
         self.hdds = [] #The list of hdd's (HddInterface class)
         self.blacklist_hdds = self.load_blacklist_file() #The list of hdd's to ignore when seen
-        self._udev_context = pyudev.Context() #The UDEV context. #TODO: Autowire?
-        self.monitor = pyudev.Monitor.from_netlink(self._udev_context) #The monitor that watches for UDEV object actions (uses C bindings)
-        self.monitor.filter_by(subsystem='block', device_type='disk') #Filter the incoming object actions
+
+        self.detector = SmartctlDetector()
+        self.detector.add_change_callback(self.deviceAdded)
+
+        # self._udev_context = pyudev.Context() #The UDEV context. #TODO: Autowire?
+        # self.monitor = pyudev.Monitor.from_netlink(self._udev_context) #The monitor that watches for UDEV object actions (uses C bindings)
+        # self.monitor.filter_by(subsystem='block', device_type='disk') #Filter the incoming object actions
+
         self.remote_hdd_server = inject(HddRemoteRecieverServer)
         self.remote_hdd_server.register_devchange_callback(self.remote_hdd_callback)
         self.AutoShortTest = False #Do auto short test on new detected drives?
@@ -152,7 +158,7 @@ class ListModel:
         import json
         dict_list = []
         path = Path(__file__).parent / '../config/blacklist.json'
-        if not path.exists('blacklist.json'):
+        if not path.exists():
             return []
 
         with path.open() as fd:
@@ -440,13 +446,13 @@ class ListModel:
                     print("Error removing hdd by node!:\n" + str(e))
                 break
 
-    def deviceAdded(self, action, device: pyudev.Device):
-        print("Udev: " + str(action) + " " + str(device))
-        if(action == 'add') and (device != None):
-            hdd = Hdd.FromUdevDevice(device)
+    def deviceAdded(self, action: str, serial: str, node: str):
+        print("Udev: " + str(action) + " " + str(serial))
+        if(action == 'add') and (node != None):
+            hdd = Hdd(node)
             self.addHdd(hdd)
-        elif(action == 'remove') and (device != None):
-            self.removeHddStr(device.device_node)
+        elif(action == 'remove') and (node != None):
+            self.removeHddStr(node)
 
     def findProcAssociated(self, name):
         #print("Looking for " + str(name) + " in process cmdline list...")
@@ -462,21 +468,23 @@ class ListModel:
     def start(self):
         
 
-        self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
-        self.observer.start()
+        # self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
+        # self.observer.start()
         self._loopgo = True
 
         self.remote_hdd_server.start()
-
-        self.updateDevices()
+        #self.updateDevices()
         print("Done initializing.")
+        self.detector.start()
         self.updateLoop()
 
     def stop(self):
         print("Stopping hddmanager...")
         self._loopgo = False
-        print("Stopping udev observer...")
-        self.observer.stop()
+        # print("Stopping udev observer...")
+        # self.observer.stop()
+        print("Stopping Smartctl poller...")
+        self.detector.stop()
         print("Stopping HDDs...")
         for h in self.hdds:
             print("\tShutting down {0}...".format(h.serial))

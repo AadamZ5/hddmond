@@ -9,7 +9,7 @@ LABEL maintainer="azocolo@velocitymsc.com"
 
 #Install smartmontools and pciutils.
 RUN apt-get update
-RUN apt-get install -y smartmontools pciutils
+RUN apt-get install -y smartmontools pciutils scrub
 RUN rm -rf /var/lib/apt/lists/*
 
 #Copy the files for our project.

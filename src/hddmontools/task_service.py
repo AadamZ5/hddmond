@@ -13,8 +13,8 @@ class TaskService:
     _name_buffer = {}
 
     def __init__(self):
-        self.task_types = {}
-        self.display_names = {}
+        self.task_types = TaskService._class_buffer
+        self.display_names = TaskService._name_buffer
 
     def initialize(self):
         for key in TaskService._class_buffer.keys():

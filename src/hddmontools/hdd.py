@@ -234,7 +234,7 @@ class Hdd(HddInterface):
             return False
 
     def add_task(self, task_name, parameters, *a, **kw):
-        task_svc = inject(TaskService)
+        task_svc = TaskService()
         task_obj = task_svc.task_types[task_name]
         parameter_schema = Task.GetTaskParameterSchema(task_obj)
         if(parameter_schema != None and len(parameters.keys()) <= 0):
@@ -261,7 +261,7 @@ class Hdd(HddInterface):
         return self._smart.attributes.copy()
 
     def get_available_tasks(self):
-        task_svc = inject(TaskService)
+        task_svc = TaskService()
         return task_svc.display_names.copy()
 
     def disconnect(self):
