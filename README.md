@@ -3,11 +3,29 @@
 Here lies the code for automagically testing HDDs as they are inserted into the HDD testing machine. 
 Uses python and python libraries to perform actions and compose test results.
 
+## Building docker
+
+The `build.sh` file builds both the *daemon* and the *client* docker images. Note that this script must be ran from the project's root folder.
+
 ## Docker usage
+
+### hddmond
 
 The container needs to be ran with privledge, and a mount to the config directory.
 
 The config directory exists inside the container at `/etc/hddmon/config`. This directory should be mounted to, with a config file existing in your system directory. See `src/config/config.json.example` for an example configuration file.
+
+### hddmon-client
+
+The container needs parameters specified at the end of the command. 
+
+```
+docker run -it --rm  --name HddmondClientTest --privileged=true hddmon-client:latest -d /dev/sdc -a 192.168.1.2 -p 56567
+```
+
+ - `-d --device` is the device to connect with.
+ - `-a --address` is the address to connect to (where hddmond is hosted).
+ - `-p --port` is the port that the hddmond daemon is accepting remote HDD clients on.
 
 ## Bare metal usage
 
