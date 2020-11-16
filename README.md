@@ -11,7 +11,7 @@ The `build.sh` file builds both the *daemon* and the *client* docker images. Not
 
 ### hddmond
 
-The container needs to be ran with priviledge, and a mount to the config directory. If mounts don't suit you, there is also support for environment variables, and command-line arguments which take the most precidence. 
+The container needs to be ran with priviledge, and a mount to the config directory. If mounts don't suit you, there is also support for environment variables, and command-line arguments which take the most precidence. However, the `blacklist.json` that is generated when HDDs are blacklisted is stored in the `/etc/hddmon/config` folder, and this is something you may want to persist.
 
 Order of configuration load:
 1. Config file              *(First to be loaded)*
@@ -34,10 +34,10 @@ The config directory exists inside the container at `/etc/hddmon/config`. This d
 #### Command-line arguments
 
 ```
---help      # Prints help
---verbose   # Verbose option output (for now)
---wsport=   # The port that the websocket should use
---rhdport=  # The remote client port that the daemon should use to host
+--help          # Prints help
+--verbose       # Verbose option output (for now)
+--wsport=       # The port that the websocket should use
+--rhdport=      # The remote client port that the daemon should use to host
 --dbaddress=    # The address of the optional DB
 --dbport=       # The port of the optional DB
 --dbuser=       # The user of the optional DB
@@ -49,7 +49,7 @@ The config directory exists inside the container at `/etc/hddmon/config`. This d
 The container needs parameters specified at the end of the command. 
 
 ```
-docker run -it --rm  --name HddmondClientTest --privileged=true hddmon-client:latest -d /dev/sdc -a 192.168.1.2 -p 56567
+docker run -it --rm --name HddmondClientTest --privileged=true hddmon-client:latest -d /dev/sdc -a 192.168.1.2 -p 56567
 ```
 
  - `-d --device` is the device to connect with.

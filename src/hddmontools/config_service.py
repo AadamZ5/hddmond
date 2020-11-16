@@ -52,15 +52,15 @@ class ConfigService:
         
 
         if db_address != None:
-            self._data['couchdb']['address'] = db_address
+            self._data['couchdb']['address'] = str(db_address)
         if db_port != None:
-            self._data['couchdb']['port'] = db_port
+            self._data['couchdb']['port'] = int(db_port)
         if db_user != None:
-            self._data['couchdb']['user'] = db_user
+            self._data['couchdb']['user'] = str(db_user)
         if db_passw != None:
-            self._data['couchdb']['password'] = db_passw
+            self._data['couchdb']['password'] = str(db_passw)
 
         if ws_port != None:
-            self._data['websocket_host']['port'] = ws_port
+            self._data['websocket_host']['port'] = int(ws_port)
         if hddmon_port != None:
-            self._data['hddmon_remote_host']['port'] = hddmon_port
+            self._data['hddmon_remote_host']['port'] = int(hddmon_port)

@@ -4,6 +4,9 @@ services:
     hddmond:
         container_name: hddmond
         image: hddmond:latest
+        environment:
+            - "WEBSOCKET_PORT=8765"
+            - "HDDMON_PORT=56567"
         ports: 
             - 8765:8765
             - 56567:56567
