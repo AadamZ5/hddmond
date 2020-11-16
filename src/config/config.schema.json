@@ -1,0 +1,152 @@
+{
+    "$id": "http://example.com/example.json",
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "default": {},
+    "description": "The schema that defines the configuration file for HDDmond",
+    "examples": [
+        {
+            "couchdb": {
+                "address": "127.0.0.1",
+                "port": 12345,
+                "user": "admin",
+                "password": "password"
+            },
+            "websocket_host": {
+                "port": 12346
+            },
+            "hddmon_remote_host": {
+                "port": 12347
+            }
+        }
+    ],
+    "required": [
+        "couchdb",
+        "websocket_host",
+        "hddmon_remote_host"
+    ],
+    "title": "The HDDmond config schema",
+    "type": "object",
+    "properties": {
+        "couchdb": {
+            "$id": "#/properties/couchdb",
+            "type": "object",
+            "title": "The couchdb schema",
+            "description": "An explanation about the purpose of this instance.",
+            "default": {},
+            "examples": [
+                {
+                    "address": "127.0.0.1",
+                    "port": 12345,
+                    "user": "admin",
+                    "password": "password"
+                }
+            ],
+            "required": [
+                "address",
+                "port",
+                "user",
+                "password"
+            ],
+            "properties": {
+                "address": {
+                    "$id": "#/properties/couchdb/properties/address",
+                    "default": null,
+                    "description": "The address of the CouchDB instance to store data on",
+                    "examples": [
+                        "127.0.0.1"
+                    ],
+                    "title": "The database address",
+                    "type": "string"
+                },
+                "port": {
+                    "$id": "#/properties/couchdb/properties/port",
+                    "default": null,
+                    "description": "The port for the CouchDB instance",
+                    "examples": [
+                        12345
+                    ],
+                    "title": "The database port",
+                    "type": "integer"
+                },
+                "user": {
+                    "$id": "#/properties/couchdb/properties/user",
+                    "default": null,
+                    "description": "The user for the CouchDB instance",
+                    "examples": [
+                        "admin"
+                    ],
+                    "title": "The database user",
+                    "type": "string"
+                },
+                "password": {
+                    "$id": "#/properties/couchdb/properties/password",
+                    "default": null,
+                    "description": "The plaintext password for the CouchDB instance",
+                    "examples": [
+                        "password"
+                    ],
+                    "title": "The database password",
+                    "type": "string"
+                }
+            },
+            "additionalProperties": true
+        },
+        "websocket_host": {
+            "$id": "#/properties/websocket_host",
+            "default": {},
+            "description": "The websocket is the endpoint for the real-time data between the front-ent and the backend.",
+            "examples": [
+                {
+                    "port": 12346
+                }
+            ],
+            "required": [
+                "port"
+            ],
+            "title": "The websocket_host schema",
+            "type": "object",
+            "properties": {
+                "port": {
+                    "$id": "#/properties/websocket_host/properties/port",
+                    "default": 8765,
+                    "description": "The port that the websocket will listen on",
+                    "examples": [
+                        12346
+                    ],
+                    "title": "The websocket port",
+                    "type": "integer"
+                }
+            },
+            "additionalProperties": true
+        },
+        "hddmon_remote_host": {
+            "$id": "#/properties/hddmon_remote_host",
+            "default": {},
+            "description": "The HDDmon remote host will host a proprietary server that allows other client systems to remotely connect and display data on a single daemon",
+            "examples": [
+                {
+                    "port": 12347
+                }
+            ],
+            "required": [
+                "port"
+            ],
+            "title": "The hddmon_remote_host schema",
+            "type": "object",
+            "properties": {
+                "port": {
+                    "$id": "#/properties/hddmon_remote_host/properties/port",
+                    "default": 0,
+                    "description": "The port that the HDDmon remote server will listen for clients on.",
+                    "examples": [
+                        12347
+                    ],
+                    "title": "The HDDmon remote host",
+                    "type": "integer"
+                }
+            },
+            "additionalProperties": true
+        }
+    },
+    "additionalProperties": true
+}
