@@ -14,9 +14,9 @@ The `build.sh` file builds both the *daemon* and the *client* docker images. Not
 The container needs to be ran with priviledge, and a mount to the config directory. If mounts don't suit you, there is also support for environment variables, and command-line arguments which take the most precidence. 
 
 Order of configuration load:
-1. Config file              *First to be loaded*
-2. ENV variables            *Overwrites config file, where specified*
-1. Command-line arguments   *Overwrites the other two, where specified*
+1. Config file              *(First to be loaded)*
+2. ENV variables            *(Overwrites config file, where specified)*
+1. Command-line arguments   *(Overwrites the other two, where specified)*
 
 #### Config file
 
