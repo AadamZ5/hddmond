@@ -17,13 +17,13 @@ class LocalInstance:
 
     def __init__(self, *a, **kw):
         self.server_address = kw.get('address', ('127.0.0.1', 56567))
-        authkey = kw.get('authkey', None)
+        # authkey = kw.get('authkey', None)
 
-        if(authkey == None):
-            #print("WARNING! No authkey was supplied!")
-            authkey = b''
-        else:
-            authkey = bytearray(authkey, 'ascii')
+        # if(authkey == None):
+        #     #print("WARNING! No authkey was supplied!")
+        #     authkey = b''
+        # else:
+        #     authkey = bytearray(authkey, 'ascii')
 
         task_svc = inject(TaskService)
         print(f"Tasks ready: {str(task_svc.task_types)}")
@@ -46,8 +46,8 @@ if __name__ == "__main__":
             print(s)
 
     import getopt, sys
-    unixOptions = "hd:va:p:A:"
-    gnuOptions = ["help", "disk=", "verbose", "address=", "port=", "authkey="]
+    unixOptions = "hd:va:p:"
+    gnuOptions = ["help", "disk=", "verbose", "address=", "port="]
     fullCmdArguments = sys.argv
     argumentList = fullCmdArguments[1:] #exclude the name
     arguments = None
@@ -84,9 +84,6 @@ if __name__ == "__main__":
         elif currentArgument in ("-p", "--port"):
             port = currentValue.strip()
             vprint("Working with port {0}".format(port))
-        elif currentArgument in ("-A", "--authkey"):
-            authkey = currentValue.strip()
-            vprint("Working with specified authkey")
             
     l_inst = LocalInstance(address=(address, int(port)), authkey=authkey, node=disk)
 

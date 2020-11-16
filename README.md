@@ -11,9 +11,38 @@ The `build.sh` file builds both the *daemon* and the *client* docker images. Not
 
 ### hddmond
 
-The container needs to be ran with privledge, and a mount to the config directory.
+The container needs to be ran with priviledge, and a mount to the config directory. If mounts don't suit you, there is also support for environment variables, and command-line arguments which take the most precidence. 
+
+Order of configuration load:
+1. Config file              *First to be loaded*
+2. ENV variables            *Overwrites config file, where specified*
+1. Command-line arguments   *Overwrites the other two, where specified*
+
+#### Config file
 
 The config directory exists inside the container at `/etc/hddmon/config`. This directory should be mounted to, with a config file existing in your system directory. See `src/config/config.json.example` for an example configuration file.
+
+#### ENV variables
+
+- `DB_ADDRESS`
+- `DB_PORT`
+- `DB_USER`
+- `DB_PASS`
+- `WEBSOCKET_PORT`
+- `HDDMON_PORT`
+
+#### Command-line arguments
+
+```
+--help      # Prints help
+--verbose   # Verbose option output (for now)
+--wsport=   # The port that the websocket should use
+--rhdport=  # The remote client port that the daemon should use to host
+--dbaddress=    # The address of the optional DB
+--dbport=       # The port of the optional DB
+--dbuser=       # The user of the optional DB
+--dbpassword=   # The password of the optional DB
+```
 
 ### hddmon-client
 

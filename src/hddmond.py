@@ -87,8 +87,8 @@ if __name__ == '__main__':
             print(s)
 
     import getopt, sys
-    unixOptions = "chvw:r:A:p:U:P:"
-    gnuOptions = ["client", "help", "verbose", "wsport=", "rhdport=", "dbaddress=", "dbport=", "dbuser=", "dbpassword="]
+    unixOptions = "hvw:r:A:p:U:P:"
+    gnuOptions = ["help", "verbose", "wsport=", "rhdport=", "dbaddress=", "dbport=", "dbuser=", "dbpassword="]
     fullCmdArguments = sys.argv
     argumentList = fullCmdArguments[1:] #exclude the name
     arguments = None
