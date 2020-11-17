@@ -169,9 +169,9 @@ class ListModel:
     def check_in_blacklist(self, hdd: Hdd):
         for d in self.blacklist_hdds:
             serial = d.get('serial', None)
-            model = d.get('model', None)
+            #model = d.get('model', None)
             node = d.get('node', None)
-            if serial == hdd.serial or model == hdd.model or (node == hdd.node and hdd.locality == 'local'):
+            if serial == hdd.serial or (node == hdd.node and hdd.locality == 'local'):
                 return True
         return False
             
@@ -318,7 +318,7 @@ class ListModel:
         for s in serials:
             for h in self.hdds:
                 if s == h.serial:
-                    self.blacklist_hdds.append({'serial': h.serial, 'model': h.model})
+                    self.blacklist_hdds.append({'serial': h.serial})
                     self.removeHddHdd(h)
                     break
 
@@ -425,9 +425,14 @@ class ListModel:
             self.database.update_hdd(HddData.FromHdd(hdd))
             hdd.seen = self.database.see_hdd(hdd.serial)
 
+        self.database.insert_attribute_capture(HddData.FromHdd(hdd))
+        print("Captured SMART data into database from {0}".format(hdd.serial))
+
         if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
             self.task_change_outside_callback({'update': 'add', 'data': HddData.FromHdd(hdd)})
         
+        
+
         return True
 
     def removeHddHdd(self, hdd: Hdd):

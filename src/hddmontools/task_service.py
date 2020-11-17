@@ -25,11 +25,12 @@ class TaskService:
 
     @staticmethod
     def register(display_name: str, task_class):
-        try:
-            task_svc = inject(TaskService)
-            task_svc.task_types[task_class.__name__] = task_class
-            task_svc.display_names[display_name] = task_class.__name__
-        except:
-            TaskService._class_buffer[task_class.__name__] = task_class
-            TaskService._name_buffer[display_name] = task_class.__name__
-            pass
+        TaskService._class_buffer[task_class.__name__] = task_class
+        TaskService._name_buffer[display_name] = task_class.__name__
+
+        # try:
+        #     task_svc = inject(TaskService)
+        #     task_svc.task_types[task_class.__name__] = task_class
+        #     task_svc.display_names[display_name] = task_class.__name__
+        # except:
+        #     pass

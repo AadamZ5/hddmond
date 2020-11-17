@@ -25,9 +25,8 @@ class LocalInstance:
         # else:
         #     authkey = bytearray(authkey, 'ascii')
 
-        task_svc = inject(TaskService)
+        task_svc = TaskService()
         print(f"Tasks ready: {str(task_svc.task_types)}")
-        print(f"{InjectionContainer.LOADED_FILEPATHS}")
 
         self.node = kw.get('node', None)
         self.hdd = Hdd(self.node)

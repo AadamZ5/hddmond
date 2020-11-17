@@ -1,6 +1,7 @@
 #!/bin/bash
 
-docker build . -f docker/client/dockerfile --tag hddmon-client
-docker build . -f docker/daemon/dockerfile --tag hddmond
+docker build . -f docker/client/dockerfile --tag registry.repairpc.localdomain/hddmon-client:latest && docker push registry.repairpc.localdomain/hddmon-client:latest
+docker build . -f docker/daemon/dockerfile --tag registry.repairpc.localdomain/hddmond:latest && docker push registry.repairpc.localdomain/hddmond:latest
 
-echo "Build 'hddmond' and 'hddmon-client' images."
+echo "Done"
+
