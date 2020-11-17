@@ -208,7 +208,6 @@ class ListModel:
         l = threading.Lock()
         l.acquire()
         serials = []
-        task_obj = None
         parameter_data = dict()
 
         #This function can be used to multicast tasks to HDDs. Since
@@ -264,7 +263,7 @@ class ListModel:
                     name = h.TaskQueue.CurrentTask.name if h.TaskQueue.CurrentTask != None else ''
                     h.TaskQueue.AbortCurrentTask()
                     print("Sent abort to current task {0} on {1}".format(name, h.serial))
-                    break;
+                    break
         l.release()
         return True
 
@@ -302,7 +301,7 @@ class ListModel:
                     h.TaskQueue.SetIndex(index, newindex)
                 else:
                     return (False, 'Unknown modifyqueue action \'' + str(action) + '\'')
-                break;
+                break
 
         l.release()
         return True
@@ -342,7 +341,7 @@ class ListModel:
             for h in self.hdds:
                 if s == h.serial:
                     h.TaskQueue.Pause = pause
-                    break;
+                    break
 
         l.release()
         return True

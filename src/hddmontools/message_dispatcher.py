@@ -6,6 +6,7 @@ import time
 import socket
 import json
 import jsonpickle
+import pickle
 import threading
 class MessageDispatcher:
     #TODO: Implement chunck sizing and resending upon error!
@@ -42,18 +43,18 @@ class MessageDispatcher:
             self._server_loop_thread.join()
 
     def _send_ping(self):
-        send = jsonpickle.dumps({"ping": "ping", "datetime": datetime.datetime.now()}) #They really only watch for `ping`
+        send = pickle.dumps({"ping": "ping", "datetime": datetime.datetime.now()}) #They really only watch for `ping`
         try:
-            self._socket.send(bytes(send, 'utf-8'))
+            self._socket.send(send)
         except socket.error:
             self._loop_go = False
             self._event_callback(event='lost_connection', data='The connection has been dropped')
 
 
     def _send_pong(self):
-        send = jsonpickle.dumps({"pong": "pong", "datetime": datetime.datetime.now()}) #They really only watch for `pong`
+        send = pickle.dumps({"pong": "pong", "datetime": datetime.datetime.now()}) #They really only watch for `pong`
         try:
-            self._socket.send(bytes(send, 'utf-8'))
+            self._socket.send(send)
         except socket.error:
             self._loop_go = False
             self._event_callback(event='lost_connection', data='The connection has been dropped')
@@ -77,12 +78,16 @@ class MessageDispatcher:
                 pass
             else:
                 try:
-                    m = jsonpickle.loads(str(m_bytes, 'utf-8'))
+                    m = pickle.loads(m_bytes)
                 except json.decoder.JSONDecodeError as e:
                     print(f"Had an error while decoding JSON from socket in messenger.\n\t{str(e)}")
                     print(str(m_bytes))
                     
                     pass
+                except EOFError:
+                    print("Ran out of input while trying to decode data.")
+                except pickle.UnpicklingError:
+                    print("Couldn't unpickle truncated data")
                 else:
                     self._last_msg_recieved_at = datetime.datetime.now()
                     data = m.get('data', None)#Data is user specified data, not our special attribute metadata
@@ -99,9 +104,9 @@ class MessageDispatcher:
                             print(f"Got a new message with key {key}.")
                             ret_data = self._process_msg(key=key, data=data)
                             print(f"Returning data {str(ret_data)}")
-                            ret_data_pickle = jsonpickle.dumps(ret_data)
+                            ret_data_pickle = pickle.dumps(ret_data)
                             try:
-                                self._socket.send(bytes(ret_data_pickle, 'utf-8'))
+                                self._socket.send(ret_data_pickle)
                             except socket.error:
                                 self._loop_go = False
                                 self._event_callback(event='lost_connection', data='The connection has been dropped')
@@ -140,9 +145,9 @@ class MessageDispatcher:
         
         self.pending_messages[m_key] = (message, callback)
 
-        send = jsonpickle.dumps({"message_key": m_key, "data": message})
+        send = pickle.dumps({"message_key": m_key, "data": message})
         try:
-            self._socket.send(bytes(send, 'utf-8'))
+            self._socket.send(send)
         except socket.error:
             self._loop_go = False
             self._event_callback(event='lost_connection', data='The connection has been dropped')
@@ -157,9 +162,9 @@ class MessageDispatcher:
         m_key = used_key
         message = self.pending_messages[m_key][0]
 
-        send = jsonpickle.dumps({"message_key": m_key, "data": message})
+        send = pickle.dumps({"message_key": m_key, "data": message})
         try:
-            self._socket.send(bytes(send, 'utf-8'))
+            self._socket.send(send)
         except socket.error:
             self._loop_go = False
             self._event_callback(event='lost_connection', data='The connection has been dropped')
@@ -209,9 +214,9 @@ class MessageDispatcher:
         """
         Sends a rhetorical message, one that need not a response. 
         """
-        send = jsonpickle.dumps({"event": 'event', "data": message})
+        send = pickle.dumps({"event": 'event', "data": message})
         try:
-            self._socket.send(bytes(send, 'utf-8'))
+            self._socket.send(send)
         except socket.error:
             self._loop_go = False
             self._event_callback(event='lost_connection', data='The connection has been dropped')
