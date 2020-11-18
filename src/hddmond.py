@@ -26,21 +26,9 @@ class App:
     def __init__(self):
         self.images = inject(ImageManager)
         self.list = ListModel(taskChangedCallback = self.task_changed_cb)
-        self.mps = MultiprocSock()
+        
         self.ws = WebsocketServer()
-        #TODO: Remove MultiProcess socket and use only websocket
-        self.mps.register_command('erase', None)
-        self.mps.register_command('shorttest', None)
-        self.mps.register_command('longtest', None)
-        self.mps.register_command('aborttest', None)
-        self.mps.register_command('getimages', self.image_shim)
-        #self.mps.register_command('image', self.list.imageBySerial)
-        self.mps.register_command('addtask', self.list.taskBySerial)
-        self.mps.register_command('aborttask', self.list.abortTaskBySerial)
-        self.mps.register_command('hdds', self.list.sendHdds)
-        self.mps.register_command('modifyqueue', self.list.modifyTaskQueue)
-        self.mps.register_command('pausequeue', self.list.pauseQueue)
-        self.mps.register_command('blacklist', self.list.blacklist)
+        
         #self.ws.register_command('image', self.list.imageBySerial)
         self.ws.register_command('gettasks', self.list.sendTaskTypes)
         self.ws.register_command('addtask', self.list.taskBySerial)
@@ -64,17 +52,14 @@ class App:
         return {'onboarded_images': imags, 'discovered_images': disc}
     def start(self):
         self.images.start()
-        self.mps.start()
         self.ws.start()
         self.list.start()
     def stop(self, *args, **kwargs):
         print("Stopping...")
-        self.mps.stop()
         self.ws.stop()
         self.list.stop()
         self.images.stop()
     def task_changed_cb(self, payload):
-        self.mps.broadcast_data(payload)
         self.ws_update(payload)
         
 
