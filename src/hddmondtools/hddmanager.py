@@ -463,7 +463,7 @@ class ListModel:
         plist = proc.core.find_processes()
         for p in plist:
             for cmdlet in p.cmdline:
-                if name in cmdlet and not 'smartct' in p.exe:
+                if str(name) in cmdlet and not 'smartct' in p.exe:
                     print("Found process " + str(p) + " containing name " + str(name) + " in cmdline.")
                     return p
         #print("No process found for " + str(name) + ".")

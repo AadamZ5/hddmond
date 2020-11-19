@@ -257,9 +257,6 @@ class Hdd(HddInterface):
     def update_smart(self) -> None:
         self._smart.update()
 
-    def capture_attributes(self):
-        return self._smart.attributes.copy()
-
     def get_available_tasks(self):
         task_svc = TaskService()
         return task_svc.display_names.copy()

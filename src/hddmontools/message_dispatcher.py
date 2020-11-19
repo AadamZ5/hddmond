@@ -28,8 +28,10 @@ class MessageDispatcher:
         self._incoming_msg_callback  = incoming_msg_callback
         self._socket = socket
         self._socket.settimeout(1000)
+        self._socket.setblocking(False)
         self._poll_interval = datetime.timedelta(seconds=polling_interval_seconds)
         self._last_msg_recieved_at = datetime.datetime.now()
+        self._last_ping = datetime.datetime.now()
         self._ping_counter = 0
         self._loop_go = True
         self._server_loop_thread = threading.Thread(name="MessageDispatcher_" + str(self._socket), target=self._server_loop)
@@ -44,41 +46,77 @@ class MessageDispatcher:
 
     def _send_ping(self):
         send = pickle.dumps({"ping": "ping", "datetime": datetime.datetime.now()}) #They really only watch for `ping`
-        try:
-            self._socket.send(send)
-        except socket.error:
-            self._loop_go = False
-            self._event_callback(event='lost_connection', data='The connection has been dropped')
+        
+        if self._send_all_bytes(send):
+            return None
+        else:
+            return None
 
 
     def _send_pong(self):
         send = pickle.dumps({"pong": "pong", "datetime": datetime.datetime.now()}) #They really only watch for `pong`
-        try:
-            self._socket.send(send)
-        except socket.error:
-            self._loop_go = False
-            self._event_callback(event='lost_connection', data='The connection has been dropped')
+        
+        if self._send_all_bytes(send):
+            return None
+        else:
+            return None
 
     def _server_loop(self):
         while self._loop_go:
+
+            #Check if we've been pinging
             if self._ping_counter > 5:
                 #Sir, we have a problem.
+                print("Ping counter over 5")
                 self._loop_go = False
                 self._event_callback(event='lost_connection', data='The connection has been dropped')
                 return
 
-            if (datetime.datetime.now() - self._last_msg_recieved_at) >= self._poll_interval:
+            #Check if we should be concerned about last message time
+            if ((datetime.datetime.now() - self._last_msg_recieved_at) >= self._poll_interval) and ((datetime.datetime.now() - self._last_ping) >= self._poll_interval):
                 self._send_ping()
                 self._ping_counter += 1
+                self._last_ping = datetime.datetime.now()
+                print(f"{self._ping_counter} Sent ping...")
+
+            #Try and get a message
+            in_bytes = bytearray()
             try:
-                m_bytes = self._socket.recv(16384) 
+                m_bytes = self._socket.recv(512) 
+                
+                if len(m_bytes) > 0:
+                    print(f"First data in! Bytes_len: {len(m_bytes)}")
+                    #We got some data. Prepare to recieve more.
+                    self._last_msg_recieved_at = datetime.datetime.now()
+
+                    in_bytes.extend(m_bytes)
+                    while len(m_bytes) > 0:
+                        #self._socket.setblocking()
+                        try:
+                            m_bytes = self._socket.recv(512) 
+                        except socket.error:
+                            m_bytes = bytes([])
+
+                        if(len(m_bytes) > 0):
+                            print(f"More data! Bytes_len: {len(m_bytes)}")
+                            in_bytes.extend(m_bytes)
+                        else:
+                            print("No new bytes in")
+                    print(f"Done recieving. Got {len(in_bytes)} bytes.")
+                else:
+                    time.sleep(0.001)#Is this efficient?
             except socket.timeout:
+                print("Socket timeout")
                 pass
             except socket.error:
+                #print("Socket error")
                 pass
             else:
+                if len(in_bytes) <= 0:
+                    continue
+
                 try:
-                    m = pickle.loads(m_bytes)
+                    m = pickle.loads(in_bytes)
                 except json.decoder.JSONDecodeError as e:
                     print(f"Had an error while decoding JSON from socket in messenger.\n\t{str(e)}")
                     print(str(m_bytes))
@@ -105,11 +143,7 @@ class MessageDispatcher:
                             ret_data = self._process_msg(key=key, data=data)
                             print(f"Returning data {str(ret_data)}")
                             ret_data_pickle = pickle.dumps(ret_data)
-                            try:
-                                self._socket.send(ret_data_pickle)
-                            except socket.error:
-                                self._loop_go = False
-                                self._event_callback(event='lost_connection', data='The connection has been dropped')
+                            self._send_all_bytes(ret_data_pickle)
                     elif "event" in m: #Events do not need responded to
                         if(callable(self._event_callback)):
                             self._event_callback(**data)
@@ -119,6 +153,8 @@ class MessageDispatcher:
                     elif "ping" in m:
                         self._last_msg_recieved_at = datetime.datetime.now()
                         self._send_pong()
+            finally:
+                self._socket.setblocking(False)
         print("Messenger {0} exited.".format(str(self._socket)))
 
 
@@ -129,6 +165,22 @@ class MessageDispatcher:
             ret_data = None
 
         return {"message_key": key, "data": ret_data}
+
+    def _send_all_bytes(self, data: bytes):
+        #print(f"Sending data: {str(data)}")
+        length = len(data)
+        sent = 0
+        #print(f"Sent {sent}/{length}")
+        try:
+            while sent < length:
+                sent += self._socket.send(data[sent:])
+                #print(f"Sent {sent}/{length}")
+            #print("Done")
+            return True
+        except socket.error:
+            self._loop_go = False
+            self._event_callback(event='lost_connection', data='The connection has been dropped')
+            return False
 
     def send(self, message, callback=None):
         """
@@ -146,14 +198,11 @@ class MessageDispatcher:
         self.pending_messages[m_key] = (message, callback)
 
         send = pickle.dumps({"message_key": m_key, "data": message})
-        try:
-            self._socket.send(send)
-        except socket.error:
-            self._loop_go = False
-            self._event_callback(event='lost_connection', data='The connection has been dropped')
-            return None
-        else:
+ 
+        if self._send_all_bytes(send):
             return m_key
+        else:
+            return None
 
     def retry_send(self, used_key):
         if not used_key in self.pending_messages:
@@ -163,14 +212,11 @@ class MessageDispatcher:
         message = self.pending_messages[m_key][0]
 
         send = pickle.dumps({"message_key": m_key, "data": message})
-        try:
-            self._socket.send(send)
-        except socket.error:
-            self._loop_go = False
-            self._event_callback(event='lost_connection', data='The connection has been dropped')
-            return None
-        else:
+        
+        if self._send_all_bytes(send):
             return m_key
+        else:
+            return None
 
     def recv(self, key: str):
         """
@@ -215,9 +261,8 @@ class MessageDispatcher:
         Sends a rhetorical message, one that need not a response. 
         """
         send = pickle.dumps({"event": 'event', "data": message})
-        try:
-            self._socket.send(send)
-        except socket.error:
-            self._loop_go = False
-            self._event_callback(event='lost_connection', data='The connection has been dropped')
+        
+        if self._send_all_bytes(send):
             return None
+        else:
+            return False

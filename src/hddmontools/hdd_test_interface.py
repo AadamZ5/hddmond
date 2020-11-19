@@ -1,201 +1,177 @@
-from abc import ABC, abstractmethod
+from hddmontools.hdd_interface import HddInterface
+from hddmontools.task import TaskQueue, TaskService, Task
+from hddmontools.notes import Notes
 from hddmondtools.hddmon_dataclasses import SmartData
 
-class TaskQueueInterface(ABC):
-    
-    @property
-    @abstractmethod
-    def Pause(self) -> bool:
-        """
-        Returns if the queue is paused
-        """
-        raise NotImplementedError
+import datetime
 
-    @Pause.setter
-    @abstractmethod
-    def Pause(self, value: bool):
-        """
-        Sets the pause for the queue
-        """
-        raise NotImplementedError
+class HddTestInterface(HddInterface):
+    def __init__(self, mock_smart: SmartData = SmartData(str(datetime.datetime.now()), [], "Test", "ata", [], True, True, "PASS", []), mock_node: str = "/dev/sdT", mock_serial: str = "HDD-TEST-INTERFACE", mock_model: str = "TEST-MODEL", mock_capacity: float = "1234.5", mock_locality: str = "local", mock_tasksvc = TaskService()):
+        self._node = mock_node
+        self._model = mock_model
+        self._serial = mock_serial
+        self._capacity = mock_capacity
+        self._taskqueue = TaskQueue(task_change_callback=self._tc_callback)
+        self._smart = mock_smart
+        self._locality = mock_locality
+        self._tasksvc = mock_tasksvc
 
-    @property
-    @abstractmethod
-    def Error(self):
-        """
-        If the queue has an error.
-        """
-        raise NotImplementedError
+        self._seen = 0
+        self._notes = Notes()
 
-    @Error.setter
-    @abstractmethod
-    def Error(self, value: bool):
-        """
-        Sets the error status for the queue
-        """
-        raise NotImplementedError
+        self._tc_callbacks = []
+
+    def _tc_callback(self, *a, **kw):
+        for c in self._tc_callbacks:
+            if c != None and callable(c):
+                c(self, *a, **kw)
 
     @property
-    @abstractmethod
-    def Full(self) -> bool:
-        """
-        If the queue is at capacity
-        """
-        raise NotImplementedError
-
-class HddInterface(ABC):
-
-    @property
-    @abstractmethod
-    def TaskQueue(self) -> TaskQueueInterface:
+    def TaskQueue(self):
         """
         Returns the TaskQueue interface for the device
         """
-        raise NotImplementedError
+        return self._taskqueue
 
     @property
-    @abstractmethod
     def serial(self) -> str:
         """
         Returns the serial for the device
         """
-        raise NotImplementedError
+        return self._serial
 
     @property
-    @abstractmethod
     def model(self) -> str:
         """
         Returns the model for the device
         """
-        raise NotImplementedError
+        return self._model
 
     @property
-    @abstractmethod
     def wwn(self) -> str:
         """
         Returns the WWN that smartctl obtained for the device
         """
-        raise NotImplementedError
+        return "1234"
 
     @property
-    @abstractmethod
     def node(self) -> str:
         """
         Returns the node for the device ("/dev/sdX" for example)
         """
-        raise NotImplementedError
+        return self._node
 
     @property
-    @abstractmethod
     def name(self) -> str:
         """
         Returns the kernel name for the device. ("sdX" for example)
         """
-        raise NotImplementedError
+        return self._node.replace("/dev/", "")
 
     @property
-    @abstractmethod
     def port(self):
         """
         Returns the port for the device, if applicable.
         """
-        raise NotImplementedError
+        return "Nowhere"
 
     @property
-    @abstractmethod
     def capacity(self) -> float:
         """
         Returns the capacity in GiB for the device
         """
-        raise NotImplementedError
+        return self._capacity
 
     @property
-    @abstractmethod
     def medium(self) -> str:
         """
         Returns the medium of the device. (SSD or HDD)
         """
-        raise NotImplementedError
+        return "HDD"
 
     @property
-    @abstractmethod
     def seen(self) -> int:
         """
         Returns how many times this drive has been seen
         """
-        raise NotImplementedError
+        return self._seen
     
     @seen.setter
-    @abstractmethod
     def seen(self, value: int):
         """
         Sets how many times this drive has been seen
         """
-        raise NotImplementedError
+        self._seen = value
 
     @property
-    @abstractmethod
     def notes(self):
         """
         The notes object
         """
-        raise NotImplementedError
+        return self._notes
 
     @property
-    @abstractmethod
     def smart_data(self) -> SmartData:
         """
         The smart_data object
         """
-        raise NotImplementedError
+        return self._smart
 
     @property
-    @abstractmethod
     def locality(self) -> str:
         """
         Some string representing where the HDD exists. 
         HDDs on the same machine as the server should report 'local'
         """
-        raise NotImplementedError
+        return self._locality
 
-    @abstractmethod
+
     def disconnect(self):
         """
         Block and finalize anything on the HDD
         """
-        raise NotImplementedError
+        pass
 
-    @abstractmethod
-    def add_task(self, *a, **kw) -> bool:
+    
+    def add_task(self, task_name, parameters, *a, **kw) -> bool:
         """
         Adds a task to the HDD with any possible parameters sent in keyword arguments.
         """
-        raise NotImplementedError
+        task_svc = self._tasksvc
+        task_obj = task_svc.task_types[task_name]
+        parameter_schema = Task.GetTaskParameterSchema(task_obj)
+        if(parameter_schema != None and len(parameters.keys()) <= 0):
+            return {'need_parameters': parameter_schema, 'task': task_name}
+        else:
+            #t = task_obj(self, **parameters)
+            #self._taskqueue.AddTask(t)
+            self._tc_callback(action='taskadded', data={'taskqueue': self.TaskQueue})
+            print("Skipping adding task on test instance.")
 
-    @abstractmethod
     def abort_task(self) -> bool: 
         """
         Should abort a currently running task.
         """
-        raise NotImplementedError
-
-    @abstractmethod
-    def add_task_changed_callback(self, *a, **kw):
+        self._taskqueue.AbortCurrentTask()
+        return True
+    
+    def add_task_changed_callback(self, callback, *a, **kw):
         """
         Registers a callback for when tasks change on a device.
         """
-        raise NotImplementedError
+        self._tc_callbacks.append(callback)
 
-    @abstractmethod
+    
     def update_smart(self):
         """
         Updates the SMART info for a drive.
         """
-        raise NotImplementedError
+        pass
 
-    @abstractmethod
+    
     def get_available_tasks(self):
         """
         Gets the tasks that are available to start on this device. Should return a dictionary of display_name: class_name
         """
-        raise NotImplementedError
+        task_svc = self._tasksvc
+        return task_svc.display_names.copy()

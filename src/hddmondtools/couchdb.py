@@ -35,6 +35,10 @@ class CouchDatabase(GenericDatabase):
 
     def update_hdd(self, hdd: HddData):
         r_hdd = None
+
+        if not hdd:
+            return
+
         if not hdd.serial in self.hdddb:
             data = {
                 '_id': hdd.serial,
@@ -63,6 +67,10 @@ class CouchDatabase(GenericDatabase):
 
     def see_hdd(self, serial: str):
         r_hdd = None
+
+        if not serial:
+            return
+
         if not serial in self.hdddb:
             raise RuntimeWarning("Hdd doc " + str(serial) + " not found in database!")
         
@@ -109,6 +117,9 @@ class CouchDatabase(GenericDatabase):
         del tasks
 
     def insert_attribute_capture(self, hdd:HddData):
+
+        if not hdd:
+            return
 
         attributes_data = []
         for a in hdd.smart.attributes:

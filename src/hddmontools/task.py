@@ -97,6 +97,7 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
     def __getstate__(self):
         state = self.__dict__.copy()
         state['_queue_thread'] = None #Can't pickle thread objects
+        state['_task_change_callback'] = None #Don't pickle callback objects
         return state
 
     @property

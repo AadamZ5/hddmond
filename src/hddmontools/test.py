@@ -121,9 +121,9 @@ class Test(Task):
         self._callCallbacks()
 
     def _captive_test(self, *args):
-        self.date_started = datetime.datetime.now(datetime.timezone.utc)
+        self.time_started = datetime.datetime.now(datetime.timezone.utc)
         r, t = self.device.run_selftest_and_wait(args[0], polling=args[1], progress_handler=self._progressHandler)
-        self.date_completed = datetime.datetime.now(datetime.timezone.utc)
+        self.time_ended = datetime.datetime.now(datetime.timezone.utc)
         #After we finish the test
         self._processReturnCode(r, t)
         self._testing = False
@@ -165,12 +165,15 @@ class Test(Task):
         elif (r == 1): #Selftest running
             self.result = TestResult.CANT_START
             self.passed = False
+            self.notes.add("A test is already running", note_taker="hddmond")
         elif (r == 3): #Aborted
             self.result = TestResult.ABORTED
             self.passed = False
+            self.notes.add("The test was aborted", note_taker="hddmond")
         else: #2 = No new selftests,    4 = Unknown smartctl error
             self.result = TestResult.UNKNOWN
             self.passed = False
+            self.notes.add("The test result is unknown", note_taker="hddmond")
         self.returncode = int(self.result)
         lock.release()
         self.notes.add("Test " + ("passed" if self.passed else "failed"), note_taker="hddmond")

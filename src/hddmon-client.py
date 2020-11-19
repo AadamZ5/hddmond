@@ -1,5 +1,6 @@
 #!/usr/bin/python3.8
 import os, sys
+import signal
 
 PACKAGE_PARENT = '..'
 SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__))))
@@ -12,10 +13,11 @@ from hddmontools.hdd import Hdd
 from hddmontools.task_service import TaskService
 from hddmontools.task import Task
 from hddmontools.hdd_remote import HddRemoteHost
+from hddmontools.hdd_test_interface import HddTestInterface
 import time
 class LocalInstance:
 
-    def __init__(self, *a, **kw):
+    def __init__(self, test_interface = False, *a, **kw):
         self.server_address = kw.get('address', ('127.0.0.1', 56567))
         # authkey = kw.get('authkey', None)
 
@@ -26,27 +28,37 @@ class LocalInstance:
         #     authkey = bytearray(authkey, 'ascii')
 
         task_svc = TaskService()
-        print(f"Tasks ready: {str(task_svc.task_types)}")
 
         self.node = kw.get('node', None)
-        self.hdd = Hdd(self.node)
+        if(test_interface == True):
+            print("Instantiating test interface...")
+            self.hdd = HddTestInterface(mock_node=self.node)
+        else:
+            self.hdd = Hdd(self.node)
         self.hdd.add_task_changed_callback(self.tc_c)
-        self.hdd_wrapper = HddRemoteHost(self.hdd, self.server_address)
-        self.hdd_wrapper.messenger._server_loop_thread.join() 
+        
     
     def tc_c(self, *a, **kw):
         print(str(a))
         print(str(kw))
 
+    def start(self, *a, **kw):
+        self.hdd_wrapper = HddRemoteHost(self.hdd, self.server_address)
+        self.hdd_wrapper.messenger._server_loop_thread.join() 
+
+    def stop(self, *a, **kw):
+        self.hdd_wrapper.stop()
+
 if __name__ == "__main__":
+
     verbose = False
     def vprint(s: str):
         if verbose == True:
             print(s)
 
     import getopt, sys
-    unixOptions = "hd:va:p:"
-    gnuOptions = ["help", "disk=", "verbose", "address=", "port="]
+    unixOptions = "hd:va:p:t"
+    gnuOptions = ["help", "disk=", "verbose", "address=", "port=", "test"]
     fullCmdArguments = sys.argv
     argumentList = fullCmdArguments[1:] #exclude the name
     arguments = None
@@ -61,6 +73,7 @@ if __name__ == "__main__":
         address = None
         port = None
         authkey = None
+        test = False
 
     for currentArgument, currentValue in arguments:
         if currentArgument in ("-v", "--verbose"):
@@ -83,7 +96,16 @@ if __name__ == "__main__":
         elif currentArgument in ("-p", "--port"):
             port = currentValue.strip()
             vprint("Working with port {0}".format(port))
+        elif currentArgument in ("-t", "--test"):
+            test = True
+            vprint("Using test interface")
             
-    l_inst = LocalInstance(address=(address, int(port)), authkey=authkey, node=disk)
+    l_inst = LocalInstance(address=(address, int(port)), authkey=authkey, node=disk, test_interface=test)
+    signal.signal(signal.SIGINT, l_inst.stop)
+    signal.signal(signal.SIGQUIT, l_inst.stop)
+    signal.signal(signal.SIGTERM, l_inst.stop)
+    #signal.signal(signal.SIGKILL, l_inst.stop) #We should let this kill the program instead of trying to handle it
+    signal.signal(signal.SIGUSR1, l_inst.stop)
+    l_inst.start()
 
 

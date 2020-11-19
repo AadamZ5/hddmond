@@ -20,7 +20,6 @@
         }
     ],
     "required": [
-        "couchdb",
         "websocket_host",
         "hddmon_remote_host"
     ],

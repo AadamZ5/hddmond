@@ -14,7 +14,7 @@ class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemo
     HddRemoteHost serves as a wrapper for a native HDD object on a client's end. The HddRemoteHost will host a connection to an HDD, which a reciever server
     will dispatch commands and data to and from. This will allow remote computers to host devices on one server.
     """
-    def __init__(self, hdd:Hdd, address):
+    def __init__(self, hdd:HddInterface, address):
         self.hdd = hdd
         self.hdd.add_task_changed_callback(self._tc_callback)
         self._socket = socket.create_connection(address, 10000)
@@ -67,7 +67,7 @@ class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemo
         data = kw.get('data', None)
 
         if 'close' == event:
-            print("Myself is done")
+            print("Connection closed gracefully.")
             self.messenger.stop()
         elif 'lost_connection' in event:
             self.messenger.stop()
@@ -199,7 +199,7 @@ class HddRemoteReciever(HddInterface):
         Some string representing where the HDD exists. 
         HDDs on the same machine as the server should report 'local'
         """
-        return str(self.messenger._socket)
+        return str(self.messenger._socket.getpeername())
 
     @property
     def serial(self) -> str:
@@ -308,12 +308,6 @@ class HddRemoteReciever(HddInterface):
         Updates the SMART info for a drive.
         """
         return self._run_method('update_smart')
-
-    def capture_attributes(self):
-        """
-        Captures SMART attributes and returns the list.
-        """
-        return self._run_method('capture_attributes')
 
     def get_available_tasks(self):
         """
