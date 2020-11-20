@@ -1,5 +1,6 @@
-from hddmondtools.genericdatabase import GenericDatabase
+from hddmondtools.databaseinterface import GenericDatabase
 from cloudant import CouchDB
+from requests import HTTPError
 from hddmondtools.hddmon_dataclasses import HddData, TaskData, AttributeData, SmartData
 from hddmontools.config_service import ConfigService
 import datetime
@@ -107,7 +108,12 @@ class CouchDatabase(GenericDatabase):
             'time_ended': task.time_ended
         }
 
-        task_doc = self.taskdb.create_document(task_data)
+        try:
+            task_doc = self.taskdb.create_document(task_data)
+        except HTTPError:
+            print(f"There was an HTTP error while trying to save the {task.name} task from {serial}")
+            return
+        
         r_hdd = self.hdddb[serial]
         r_hdd.fetch()
         tasks = r_hdd.get('tasks', list()).copy()
@@ -144,7 +150,11 @@ class CouchDatabase(GenericDatabase):
             'attributes': attributes_data
         }
 
-        sc_doc = self.smartdb.create_document(s_data)
+        try:
+            sc_doc = self.smartdb.create_document(s_data)
+        except HTTPError:
+            print(f"There was an HTTP error while trying to save the smart capture from {hdd.serial}")
+            return
 
         r_hdd = self.hdddb[hdd.serial]
         r_hdd.fetch()

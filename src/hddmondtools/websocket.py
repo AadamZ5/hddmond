@@ -1,11 +1,12 @@
 import asyncio
-from asyncio import AbstractEventLoop
 import threading
 import websockets
-from .genericserver import GenericServer
 import jsonpickle
 
-from injectable import inject
+from asyncio import AbstractEventLoop
+from injectable import inject, injectable
+
+from hddmondtools.apiinterface import ApiInterface
 from hddmontools.config_service import ConfigService
 
 
@@ -13,7 +14,7 @@ class ClientDataMulticaster: #This is used to keep track of all clients connecte
     def __init__(self):
         self._client_data = {} #{client: data[]}
 
-    def register(self, address):
+    def register_client(self, address):
         #print("Registering websocket at " + str(address) + " to broadcast list")
         self._client_data.update({address: []})
         return self._client_data[address]
@@ -22,7 +23,7 @@ class ClientDataMulticaster: #This is used to keep track of all clients connecte
         for k in self._client_data.keys():
             self._client_data[k].append(data)
 
-    def unregister(self, address):
+    def unregister_client(self, address):
         #print("Unregistering websocket at " + str(address) + " from broadcast list")
         try:
             del self._client_data[address]
@@ -30,8 +31,8 @@ class ClientDataMulticaster: #This is used to keep track of all clients connecte
             print("Error: Tried to delete a websocket that was never registered!")
             pass
 
-
-class WebsocketServer(GenericServer):
+@injectable(singleton=True)
+class WebsocketServer(ApiInterface):
     def __init__(self):
         self.loop = asyncio.get_event_loop()
 
@@ -51,15 +52,15 @@ class WebsocketServer(GenericServer):
 
         super(WebsocketServer, self).__init__()
 
-    async def register(self, websocket):
+    async def register_client(self, websocket):
         self.clientlist.update({websocket.remote_address: websocket})
 
-    async def unregister(self, websocket_addr):
+    async def unregister_client(self, websocket_addr):
         del self.clientlist[websocket_addr]
-        self.clientdata_multicast.unregister(websocket_addr)
+        self.clientdata_multicast.unregister_client(websocket_addr)
 
     async def consumer_handler(self, ws, path, *args, **kwargs):
-        await self.register(ws)
+        await self.register_client(ws)
         async for message in ws:
             m = {}
             try:
@@ -85,10 +86,10 @@ class WebsocketServer(GenericServer):
                 send = jsonpickle.dumps({"error": "No data to parse!"}, unpicklable=False, make_refs=False)
                 await ws.send(send)
 
-        await self.unregister(ws.remote_address)
+        await self.unregister_client(ws.remote_address)
         
     async def producer_handler(self, ws, path, *args, **kw):
-        data_list = self.clientdata_multicast.register(ws.remote_address)
+        data_list = self.clientdata_multicast.register_client(ws.remote_address)
         while True:
             if(len(data_list) <= 0):
                 await asyncio.sleep(0.5)

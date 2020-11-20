@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from py_ts_interfaces import Interface
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import datetime
 #
 #   The purpose of this file is to hold data classes that correspond to typescript interface definitions on the web app thing.
@@ -162,6 +162,7 @@ class HddData(Interface):
     notes: List[NoteData]
     seen: int
     locality: str
+    supported_tasks: Dict[str, str]
 
     @staticmethod
     def FromHdd(hdd): #HddInterface
@@ -170,7 +171,7 @@ class HddData(Interface):
         #     #notes.append(NoteData.FromNote(n))
         #     pass
         try:
-            return HddData(hdd.serial, hdd.model, hdd.wwn, hdd.capacity, None, str(hdd.smart_data.assessment), TaskQueueData.FromTaskQueue(hdd.TaskQueue), hdd.node, str(hdd.port), hdd.smart_data, notes, hdd.seen, hdd.locality)
+            return HddData(hdd.serial, hdd.model, hdd.wwn, hdd.capacity, None, str(hdd.smart_data.assessment), TaskQueueData.FromTaskQueue(hdd.TaskQueue), hdd.node, str(hdd.port), hdd.smart_data, notes, hdd.seen, hdd.locality, hdd.get_available_tasks())
         except Exception as e:
             print("Error while parsing HDD {0} {1}".format(hdd.serial, hdd.node))
             print(str(e))

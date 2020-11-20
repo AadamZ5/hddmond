@@ -118,14 +118,16 @@ class MessageDispatcher:
                 try:
                     m = pickle.loads(in_bytes)
                 except json.decoder.JSONDecodeError as e:
-                    print(f"Had an error while decoding JSON from socket in messenger.\n\t{str(e)}")
+                    print(f"Had an error while decoding JSON from socket in messenger!\n\t{str(e)}")
                     print(str(m_bytes))
                     
                     pass
                 except EOFError:
-                    print("Ran out of input while trying to decode data.")
+                    print("Ran out of input while trying to decode data!")
                 except pickle.UnpicklingError:
-                    print("Couldn't unpickle truncated data")
+                    print("Couldn't unpickle truncated data!")
+                except KeyError:
+                    print("Random key error while unpickling!")
                 else:
                     self._last_msg_recieved_at = datetime.datetime.now()
                     data = m.get('data', None)#Data is user specified data, not our special attribute metadata

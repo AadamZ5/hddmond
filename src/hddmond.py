@@ -3,6 +3,7 @@ from injectable import load_injection_container, Autowired, autowired, inject
 
 import sys
 import os
+import signal
 
 # PACKAGE_PARENT = '..'
 # SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__))))
@@ -14,9 +15,7 @@ load_injection_container('./') #For the `injectable` module. Scans files for inj
 from hddmontools.task import Task, EraseTask, ImageTask
 from hddmondtools.hddmanager import ListModel
 from hddmondtools.websocket import WebsocketServer
-from hddmondtools.multiproc_socket import MultiprocSock
 from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData, ImageData
-import signal
 from hddmondtools.couchdb import CouchDatabase
 from hddmontools.image import ImageManager, CustomerImage, DiskImage
 from hddmontools.config_service import ConfigService
@@ -27,19 +26,16 @@ class App:
         self.images = inject(ImageManager)
         self.list = ListModel(taskChangedCallback = self.task_changed_cb)
         
-        self.ws = WebsocketServer()
+        self.ws = inject(WebsocketServer)
         
-        #self.ws.register_command('image', self.list.imageBySerial)
-        self.ws.register_command('gettasks', self.list.sendTaskTypes)
-        self.ws.register_command('addtask', self.list.taskBySerial)
-        self.ws.register_command('aborttask', self.list.abortTaskBySerial)
-        self.ws.register_command('hdds', self.list.sendHdds)
-        self.ws.register_command('modifyqueue', self.list.modifyTaskQueue)
-        self.ws.register_command('pausequeue', self.list.pauseQueue)
-        self.ws.register_command('blacklist', self.list.blacklist)
-        self.ws.register_command('blacklisted', self.list.sendBlacklist)
-        self.ws.register_command('upload_image', None)
-        self.ws.register_command('upload_image_done', None)
+        self.ws.register_command(self.list.taskBySerial, 'addtask')
+        self.ws.register_command(self.list.abortTaskBySerial, 'aborttask')
+        self.ws.register_command(self.list.sendHdds, 'hdds')
+        self.ws.register_command(self.list.modifyTaskQueue, 'modifyqueue')
+        self.ws.register_command(self.list.pauseQueue, 'pausequeue')
+        self.ws.register_command(self.list.blacklist, 'blacklist')
+        self.ws.register_command(self.list.sendBlacklist, 'blacklisted')
+
     def ws_update(self, payload):
         self.ws.broadcast_data(payload)
     def image_shim(self, *args, **kw):

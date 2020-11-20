@@ -19,11 +19,10 @@ import hddmontools.sasdetection
 import hddmontools.portdetection
 import signal
 from socket import timeout
-from .websocket import WebsocketServer
-from .multiproc_socket import MultiprocSock
-from .hddmon_dataclasses import HddData, TaskQueueData, TaskData, ImageData
-from .genericdatabase import GenericDatabase
-from .couchdb import CouchDatabase
+from hddmondtools.websocket import WebsocketServer
+from hddmondtools.hddmon_dataclasses import HddData, TaskQueueData, TaskData, ImageData
+from hddmondtools.databaseinterface import GenericDatabase
+from hddmondtools.couchdb import CouchDatabase
 from hddmontools.hdd_remote import HddRemoteRecieverServer, HddRemoteReciever
 from injectable import inject
 from pathlib import Path
@@ -41,12 +40,17 @@ class ListModel:
         self.task_svc = TaskService()
         self.task_svc.initialize()
         self.hdds = [] #The list of hdd's (HddInterface class)
+        self.blacklist_path = Path(__file__).parent / '../config/blacklist.json' #TODO: Make this configurable
         self.blacklist_hdds = self.load_blacklist_file() #The list of hdd's to ignore when seen
 
+        # This has replaced the UDEV detector since it doesn't work in a container
         self.detector = SmartctlDetector()
         self.detector.add_change_callback(self.deviceAdded)
 
-        # self._udev_context = pyudev.Context() #The UDEV context. #TODO: Autowire?
+        # TODO: Detect if in container or not!
+        # TODO: Add a way to tell us of new devices using a user's external script!
+
+        # self._udev_context = pyudev.Context() #The UDEV context. #TODO: Autowire? If we decide to use this.
         # self.monitor = pyudev.Monitor.from_netlink(self._udev_context) #The monitor that watches for UDEV object actions (uses C bindings)
         # self.monitor.filter_by(subsystem='block', device_type='disk') #Filter the incoming object actions
 
@@ -148,7 +152,7 @@ class ListModel:
         
         old_list.extend(need_to_add)
 
-        path = Path(__file__).parent / '../config/blacklist.json'
+        path = self.blacklist_path
         with path.open('w+') as fd:
             json.dump(old_list, fd)
         
@@ -157,7 +161,7 @@ class ListModel:
     def load_blacklist_file(self):
         import json
         dict_list = []
-        path = Path(__file__).parent / '../config/blacklist.json'
+        path = self.blacklist_path
         if not path.exists():
             return []
 
@@ -174,8 +178,13 @@ class ListModel:
             if serial == hdd.serial or (node == hdd.node and hdd.locality == 'local'):
                 return True
         return False
-            
+    
+    #@ws.register(command="hdds") #! <-- This doesn't work because it takes a class-method, and not an instance-method. When this gets called, `self` is not the class-instance.
     def sendHdds(self, *args, **kw):
+        """
+        Retreive a list of the currently connected HDDs, or a single one if `serial` is specified.
+        """
+
         serial = kw.get('serial', None)
 
         if serial != None:
@@ -194,7 +203,7 @@ class ListModel:
 
     def sendTaskTypes(self, *args, **kw):
         """
-        Returns each HDD's supported task types
+        Returns each HDD's supported task types.
         """
 
         hdd_dict = {}
@@ -202,9 +211,12 @@ class ListModel:
             type_display_dict = h.get_available_tasks()
             hdd_dict[h.serial] = type_display_dict
         
-        return hdd_dict
+        return {'task_types': hdd_dict}
 
     def taskBySerial(self, *args, **kw):
+        """
+        Attempt to queue a task on HDDs. Allows multicasting.
+        """
         l = threading.Lock()
         l.acquire()
         serials = []
@@ -233,8 +245,6 @@ class ListModel:
         else:
             return {'error': 'No task was specified!'}
 
-        
-        
         errors = []
         for h in hdds_to_task:
             if not (task_name in h.get_available_tasks().values()):
@@ -251,6 +261,10 @@ class ListModel:
         return {'errors': errors}
 
     def abortTaskBySerial(self, *args, **kw):
+        """
+        Aborts a task on the HDDs specified. Allows multicasting.
+        """
+
         l = threading.Lock()
         l.acquire()
         serials = []
@@ -268,6 +282,9 @@ class ListModel:
         return True
 
     def modifyTaskQueue(self, *args, **kw):
+        """
+        Modifies the task queue. Used for "repositioning" tasks in the queue.
+        """
         l = threading.Lock()
         l.acquire()
 
@@ -307,6 +324,9 @@ class ListModel:
         return True
 
     def blacklist(self, *a, **k):
+        """
+        Blacklists the specified HDDs. Allows multicasting.
+        """
         l = threading.Lock()
         l.acquire()
         serials = k.get('serials', None)
@@ -326,6 +346,9 @@ class ListModel:
         return True
 
     def sendBlacklist(self, *a, **k):
+        """
+        Sends the blacklist of HDDs.
+        """
         return {'blacklist': self.load_blacklist_file()}
 
     def pauseQueue(self, *a, **k):
@@ -411,10 +434,6 @@ class ListModel:
             del hdd
             return False
 
-        t = self.findProcAssociated(hdd.name)
-        if(t != None):
-            if isinstance(hdd, Hdd):
-                hdd.TaskQueue.AddTask(ExternalTask(hdd, t.pid))
         self.hdds.append(hdd)
         if(self.AutoShortTest == True) and (not isinstance(hdd.TaskQueue.CurrentTask, Test)):
             pass #No autotests yet.
