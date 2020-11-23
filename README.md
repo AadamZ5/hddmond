@@ -16,7 +16,7 @@ The container needs to be ran with priviledge, and a mount to the config directo
 Order of configuration load:
 1. Config file              *(First to be loaded)*
 2. ENV variables            *(Overwrites config file, where specified)*
-1. Command-line arguments   *(Overwrites the other two, where specified)*
+3. Command-line arguments   *(Overwrites the other two, where specified)*
 
 #### Config file
 
@@ -34,14 +34,14 @@ The config directory exists inside the container at `/etc/hddmon/config`. This d
 #### Command-line arguments
 
 ```
---help          # Prints help
---verbose       # Verbose option output (for now)
---wsport=       # The port that the websocket should use
---rhdport=      # The remote client port that the daemon should use to host
---dbaddress=    # The address of the optional DB
---dbport=       # The port of the optional DB
---dbuser=       # The user of the optional DB
---dbpassword=   # The password of the optional DB
+-h --help          # Prints help
+-v --verbose       # Verbose option output (for now)
+-w --wsport=       # The port that the websocket should use
+-r --rhdport=      # The remote client port that the daemon should use to host
+-A --dbaddress=    # The address of the optional DB
+-p --dbport=       # The port of the optional DB
+-U --dbuser=       # The user of the optional DB
+-P --dbpassword=   # The password of the optional DB
 ```
 
 ### hddmon-client

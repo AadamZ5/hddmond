@@ -115,7 +115,7 @@ if __name__ == '__main__':
                 vprint("Database port overridden to {0}".format(dbport))
             elif currentArgument in ("-U", "--dbuser"):
                 dbuser = currentValue.strip()
-                vprint(f"Database port overridden to {dbuser}")
+                vprint(f"Database user overridden")
             elif currentArgument in ("-P", "--dbpassword"):
                 dbpass = currentValue.strip()
                 vprint(f"Database password overridden")
