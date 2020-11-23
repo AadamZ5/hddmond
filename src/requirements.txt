@@ -20,7 +20,7 @@ monotonic==1.5
 git+https://github.com/AadamZ5/python-proc.git@dev
 property-manager==3.0
 py-ts-interfaces==0.2.0
-git+https://github.com/AadamZ5/py-SMART.git@pickling-fixes
+git+https://github.com/freenas/py-SMART@master
 pyudev==0.22.0
 sgqlc==10.1
 six==1.14.0
