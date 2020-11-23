@@ -20,7 +20,9 @@ class CouchDatabase(GenericDatabase):
         self.couch = CouchDB(self._u, self._p, url=self._add, auto_renew=True)
         try:
             self.couch.connect()
-        except:
+        except Exception as e:
+            print("Couldn't connect to database.")
+            print(e)
             return False
         
         self.couch.create_database('hard-drives')

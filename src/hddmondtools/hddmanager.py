@@ -443,8 +443,9 @@ class ListModel:
             self.database.update_hdd(HddData.FromHdd(hdd))
             hdd.seen = self.database.see_hdd(hdd.serial)
 
-        self.database.insert_attribute_capture(HddData.FromHdd(hdd))
-        print("Captured SMART data into database from {0}".format(hdd.serial))
+        if self.database:
+            self.database.insert_attribute_capture(HddData.FromHdd(hdd))
+            print("Captured SMART data into database from {0}".format(hdd.serial))
 
         if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
             self.task_change_outside_callback({'update': 'add', 'data': HddData.FromHdd(hdd)})
