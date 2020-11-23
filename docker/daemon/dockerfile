@@ -22,4 +22,4 @@ WORKDIR /etc/hddmon
 RUN pip install -r requirements.txt
 
 #The run point.
-ENTRYPOINT [ "python", "hddmond.py" ]
+ENTRYPOINT [ "python", "-u", "hddmond.py" ]
