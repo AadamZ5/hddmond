@@ -53,14 +53,20 @@ class ConfigService:
 
         if db_address != None:
             self._data['couchdb']['address'] = str(db_address)
+            print(f"Got ENV variable DB_ADDRESS={db_address}")
         if db_port != None:
             self._data['couchdb']['port'] = int(db_port)
+            print(f"Got ENV variable DB_PORT={db_port}")
         if db_user != None:
             self._data['couchdb']['user'] = str(db_user)
+            print(f"Got ENV variable DB_USER (not displayed)")
         if db_passw != None:
             self._data['couchdb']['password'] = str(db_passw)
+            print(f"Got ENV variable DB_PASSWORD (not displayed)")
 
         if ws_port != None:
             self._data['websocket_host']['port'] = int(ws_port)
+            print(f"Got ENV variable WEBSOCKET_PORT={ws_port}")
         if hddmon_port != None:
             self._data['hddmon_remote_host']['port'] = int(hddmon_port)
+            print(f"Got ENV variable HDDMON_PORT={hddmon_port}")
