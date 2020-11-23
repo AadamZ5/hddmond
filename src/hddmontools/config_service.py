@@ -44,7 +44,7 @@ class ConfigService:
         db_address = os.getenv('DB_ADDRESS')
         db_port = os.getenv('DB_PORT')
         db_user = os.getenv('DB_USER')
-        db_passw = os.getenv('DB_PASS')
+        db_passw = os.getenv('DB_PASSWORD')
 
         ws_port = os.getenv('WEBSOCKET_PORT')
 
