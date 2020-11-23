@@ -168,7 +168,6 @@ class CouchDatabase(GenericDatabase):
 @injectable_factory(CouchDatabase)
 def couchdb_factory():
     cfg_svc = inject(ConfigService)
-    print(cfg_svc.data)
     address = cfg_svc.data['couchdb']['address']
     port = cfg_svc.data['couchdb']['port']
     user = cfg_svc.data['couchdb']['user']
