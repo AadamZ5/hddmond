@@ -14,6 +14,7 @@ from .task_service import TaskService
 import datetime
 from hddmontools.hdd_interface import TaskQueueInterface
 from injectable import Autowired, autowired, injectable
+from abc import ABC, abstractmethod
 
 class TaskResult(enum.Enum):
     FINISHED = 1,
@@ -72,9 +73,11 @@ class Task:
         return 0
 
     @property
+    @abstractmethod
     def Finished(self):
         return True
 
+    @abstractmethod
     def start(self, progress_callback=None):
         '''
         Should be overridden in sub-classes to define the starting point of the operation.
@@ -82,6 +85,7 @@ class Task:
         '''
         pass
 
+    @abstractmethod
     def abort(self, wait=False):
         '''
         Should be overridden in a sub-class to provide the implimentation of aborting the task.
@@ -409,7 +413,7 @@ class ExternalTask(Task):
     
 class EraseTask(Task):
 
-    display_name = "Erase"
+    display_name = "Scrub Erase"
 
     parameter_schema = None
 
@@ -494,8 +498,13 @@ class EraseTask(Task):
 
 
     def _monitorProgress(self):
+
+        self._progress = int(self._procview.io['write_bytes'] / self._cap_in_bytes)
+        self._progressString = "Erasing " + str(self.Progress) + "%" 
+
         if(self._progress_cb != None) and callable(self._progress_cb):
             self._progress_cb(self.Progress, self._progressString)
+
         lastprogress = self._progress
         while self._monitor and (self._returncode == None):
             
@@ -724,4 +733,4 @@ class ImageTask(Task):
             except RuntimeError:
                 pass
         
-TaskService.register(ImageTask.display_name, ImageTask)
+#TaskService.register(ImageTask.display_name, ImageTask)
