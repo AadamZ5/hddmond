@@ -499,8 +499,12 @@ class EraseTask(Task):
 
     def _monitorProgress(self):
 
-        self._progress = int(self._procview.io['write_bytes'] / self._cap_in_bytes)
-        self._progressString = "Erasing " + str(self.Progress) + "%" 
+        if(self.Capacity > 0):
+            self._progress = int(self._procview.io['write_bytes'] / self._cap_in_bytes)
+            self._progressString = "Erasing " + str(self.Progress) + "%" 
+        else:
+            self._progress = -1
+            self._progressString = "Erasing"
 
         if(self._progress_cb != None) and callable(self._progress_cb):
             self._progress_cb(self.Progress, self._progressString)
@@ -528,7 +532,7 @@ class EraseTask(Task):
         if(self._returncode == 0):
             self.notes.add("Full erase performed on storage device. Wrote 0xFF to all bits.", note_taker="hddmond")
         else:
-            self.notes.add("Erase task failed", note_taker="hddmond")
+            self.notes.add(f"Erase task failed. Return code: {self.returncode}", note_taker="hddmond")
         if(self._callback != None):
             self._callback(self._returncode)
 
@@ -712,7 +716,7 @@ class ImageTask(Task):
             try:
                 self.err = self._subproc.stderr.read()
                 self.out = self._subproc.stdout.read()
-            except ValueError as e:
+            except ValueError:
                 self.err = None
                 self.out = None
                 pass
