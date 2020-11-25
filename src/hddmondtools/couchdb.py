@@ -146,7 +146,7 @@ class CouchDatabase(GenericDatabase):
             attributes_data.append(a_data)
 
         s_data = {
-            'date': datetime.datetime.now().isoformat(),
+            'date': datetime.datetime.now(datetime.timezone.utc).isoformat(),
             'assessment': hdd.smart.assessment,
             'firmware': hdd.smart.firmware,
             'attributes': attributes_data

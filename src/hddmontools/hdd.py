@@ -125,6 +125,7 @@ class Hdd(HddInterface):
         """
         The smart_data object
         """
+        self.update_smart()
         return SmartData.FromSmartDev(self._smart)
         
     @property

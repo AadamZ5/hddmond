@@ -6,7 +6,7 @@ from hddmondtools.hddmon_dataclasses import SmartData
 import datetime
 
 class HddTestInterface(HddInterface):
-    def __init__(self, mock_smart: SmartData = SmartData(str(datetime.datetime.now()), [], "Test", "ata", [], True, True, "PASS", []), mock_node: str = "/dev/sdT", mock_serial: str = "HDD-TEST-INTERFACE", mock_model: str = "TEST-MODEL", mock_capacity: float = "1234.5", mock_locality: str = "local", mock_tasksvc = TaskService()):
+    def __init__(self, mock_smart: SmartData = SmartData(str(datetime.datetime.now(datetime.timezone.utc)), [], "Test", "ata", [], True, True, "PASS", []), mock_node: str = "/dev/sdT", mock_serial: str = "HDD-TEST-INTERFACE", mock_model: str = "TEST-MODEL", mock_capacity: float = "1234.5", mock_locality: str = "local", mock_tasksvc = TaskService()):
         self._node = mock_node
         self._model = mock_model
         self._serial = mock_serial
