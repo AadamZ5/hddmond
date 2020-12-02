@@ -339,7 +339,7 @@ class ExternalTask(Task):
 
     @property
     def PID(self):
-        return self._PID
+        return self._PID if self._PID != None else "Unknown"
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -351,16 +351,25 @@ class ExternalTask(Task):
 
     def __init__(self, hdd,  pid, processExitCallback=None, pollingInterval=5, start=False):
         self._procview = proc.core.Process.from_pid(pid)
-        self._PID = self._procview.pid
-        self._finished = False
-        self._poll = True
+
+        try:
+            self._PID = self._procview.pid
+            self._finished = False
+            self._poll = True
+            self.notes.add("An external task was detected running on this storage device.\nCommand: " + str(" ".join(map(str, self._procview.cmdline))), note_taker="hddmond")
+        except AttributeError: #Sometimes _procview is None from the start if the process exited super fast, so if that's the case, go ahead and finish.
+            self._PID = -1
+            self._finished = True
+            self._poll = False
+            self.notes.add("An external task was detected running on this storage device.", note_taker="hddmond")
+
         self._pollingInterval = pollingInterval
         self._pollingThread = threading.Thread(target=self._pollProcess, name=str(self.PID) + "_pollingThread")
         super(ExternalTask, self).__init__("External", hdd)
         self.returncode = 0
         self._callback = processExitCallback
         self._progressString = "PID " + str(self.PID)
-        self.notes.add("An external task was detected running on this storage device.\nCommand: " + str(" ".join(map(str, self._procview.cmdline))), note_taker="hddmond")
+        
         if(start):
             self.start()
         
@@ -386,7 +395,7 @@ class ExternalTask(Task):
     
     def abort(self, wait=False, true_abort=False):
         if(true_abort == True): #Don't kill the process unless explicitly stated.
-            if(self._procview.is_alive == True):
+            if(self._procview != None) and (self._procview.is_alive == True):
                 self.notes.add("A termination signal was sent to the process.", note_taker="hddmond")
                 self._procview.terminate()
         else:
