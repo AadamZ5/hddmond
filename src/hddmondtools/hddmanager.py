@@ -24,6 +24,7 @@ from hddmondtools.hddmon_dataclasses import HddData, TaskQueueData, TaskData, Im
 from hddmondtools.databaseinterface import GenericDatabase
 from hddmondtools.couchdb import CouchDatabase
 from hddmontools.hdd_remote import HddRemoteRecieverServer, HddRemoteReciever
+from hddmondtools.websocket import WebsocketServer
 from injectable import inject
 from pathlib import Path
 
@@ -178,8 +179,8 @@ class ListModel:
             if serial == hdd.serial or (node == hdd.node and hdd.locality == 'local'):
                 return True
         return False
-    
-    #@ws.register(command="hdds") #! <-- This doesn't work because it takes a class-method, and not an instance-method. When this gets called, `self` is not the class-instance.
+
+    @WebsocketServer.register_action(action="hdds")
     def sendHdds(self, *args, **kw):
         """
         Retreive a list of the currently connected HDDs, or a single one if `serial` is specified.
@@ -213,6 +214,7 @@ class ListModel:
         
         return {'task_types': hdd_dict}
 
+    @WebsocketServer.register_action(action="addtask")
     def taskBySerial(self, *args, **kw):
         """
         Attempt to queue a task on HDDs. Allows multicasting.
@@ -260,6 +262,7 @@ class ListModel:
         l.release()
         return {'errors': errors}
 
+    @WebsocketServer.register_action(action='aborttask')
     def abortTaskBySerial(self, *args, **kw):
         """
         Aborts a task on the HDDs specified. Allows multicasting.
@@ -281,6 +284,7 @@ class ListModel:
         l.release()
         return True
 
+    @WebsocketServer.register_action(action='modifyqueue')
     def modifyTaskQueue(self, *args, **kw):
         """
         Modifies the task queue. Used for "repositioning" tasks in the queue.
@@ -323,6 +327,7 @@ class ListModel:
         l.release()
         return True
 
+    @WebsocketServer.register_action(action='blacklist')
     def blacklist(self, *a, **k):
         """
         Blacklists the specified HDDs. Allows multicasting.
@@ -345,12 +350,14 @@ class ListModel:
         l.release()
         return True
 
+    @WebsocketServer.register_action(action='blacklisted')
     def sendBlacklist(self, *a, **k):
         """
         Sends the blacklist of HDDs.
         """
         return {'blacklist': self.load_blacklist_file()}
 
+    @WebsocketServer.register_action(action='pausequeue')
     def pauseQueue(self, *a, **k):
         l = threading.Lock()
         l.acquire()

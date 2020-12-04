@@ -23,7 +23,7 @@ cp -r ./ $SRC_DIR
 
 #Install packages
 cd $SRC_DIR
-python3.8 -m pip install -r $SRC_DIR/requirements.txt
+python3.8 -m pip install --no-cache -r $SRC_DIR/requirements.txt
 
 #make links in /usr/bin to executables in /etc/hddmon 
 echo Making links...

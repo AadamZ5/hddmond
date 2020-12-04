@@ -25,19 +25,13 @@ class App:
     def __init__(self):
         self.images = inject(ImageManager)
         self.list = ListModel(taskChangedCallback = self.task_changed_cb)
-        
+    
         self.ws = inject(WebsocketServer)
-        
-        self.ws.register_command(self.list.taskBySerial, 'addtask')
-        self.ws.register_command(self.list.abortTaskBySerial, 'aborttask')
-        self.ws.register_command(self.list.sendHdds, 'hdds')
-        self.ws.register_command(self.list.modifyTaskQueue, 'modifyqueue')
-        self.ws.register_command(self.list.pauseQueue, 'pausequeue')
-        self.ws.register_command(self.list.blacklist, 'blacklist')
-        self.ws.register_command(self.list.sendBlacklist, 'blacklisted')
+        self.ws.connect_instance(self.list) #All API functions are defined in ListModel
 
     def ws_update(self, payload):
         self.ws.broadcast_data(payload)
+        
     def image_shim(self, *args, **kw):
         imags = []
         for i in self.images.added_images:

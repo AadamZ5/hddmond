@@ -69,22 +69,22 @@ class WebsocketServer(ApiInterface):
                 print("Error decoding message from " + str(ws.remote_address) + ". Message: " + str(message))
                 send = jsonpickle.dumps({"error": "Couldn't parse JSON data!"}, unpicklable=False, make_refs=False)
                 await ws.send(send)
-            
-            if(m != None):
-                command = m.get('command', None)
-                data = m.get('data', dict())
-
-                if command != None:
-                    r = self.find_action(str(command), **data) #The main application will register functions to various commands. See if we can find one registered for the command sent.
-                    r_json = jsonpickle.dumps(r, unpicklable=False, make_refs=False) #Note, if no function is found, we will just JSON pickle `None` which will just send a `null` back to the client.
-                    await ws.send(r_json) 
-                else:
-                    send = jsonpickle.dumps({"error": "No command to process!"}, unpicklable=False, make_refs=False)
-                    await ws.send(send)
-
             else:
-                send = jsonpickle.dumps({"error": "No data to parse!"}, unpicklable=False, make_refs=False)
-                await ws.send(send)
+                if(m != None):
+                    command = m.get('command', None)
+                    data = m.get('data', dict())
+
+                    if command != None:
+                        r = self.find_action(str(command), **data) #The main application will register functions to various commands. See if we can find one registered for the command sent.
+                        r_json = jsonpickle.dumps(r, unpicklable=False, make_refs=False) #Note, if no function is found, we will just JSON pickle `None` which will just send a `null` back to the client.
+                        await ws.send(r_json) 
+                    else:
+                        send = jsonpickle.dumps({"error": "No command to process!"}, unpicklable=False, make_refs=False)
+                        await ws.send(send)
+
+                else:
+                    send = jsonpickle.dumps({"error": "No data to parse!"}, unpicklable=False, make_refs=False)
+                    await ws.send(send)
 
         await self.unregister_client(ws.remote_address)
         
