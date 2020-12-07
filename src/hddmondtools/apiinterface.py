@@ -6,6 +6,7 @@ from controllermodel import GenericController
 class ApiInterface(GenericController, ABC):
     
     def __init__(self):
+        super().__init__()
         self._commandlist = {} #dict of {command_name: command}
         self._description_list = {} #dict of {command_name: description}
         self._ufc = 0 # Un-identified function counter

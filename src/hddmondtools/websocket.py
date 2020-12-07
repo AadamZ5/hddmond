@@ -34,6 +34,7 @@ class ClientDataMulticaster: #This is used to keep track of all clients connecte
 @injectable(singleton=True)
 class WebsocketServer(ApiInterface):
     def __init__(self):
+        super().__init__()
         self.loop = asyncio.get_event_loop()
 
         # self.ssl_context = ssl._create_unverified_context(ssl.PROTOCOL_TLS_SERVER)
