@@ -350,6 +350,8 @@ class ExternalTask(Task):
         self.__dict__.update(state)
 
     def __init__(self, hdd,  pid, processExitCallback=None, pollingInterval=5, start=False):
+        super(ExternalTask, self).__init__("External", hdd)
+        
         self._procview = proc.core.Process.from_pid(pid)
 
         try:
@@ -365,7 +367,6 @@ class ExternalTask(Task):
 
         self._pollingInterval = pollingInterval
         self._pollingThread = threading.Thread(target=self._pollProcess, name=str(self.PID) + "_pollingThread")
-        super(ExternalTask, self).__init__("External", hdd)
         self.returncode = 0
         self._callback = processExitCallback
         self._progressString = "PID " + str(self.PID)
