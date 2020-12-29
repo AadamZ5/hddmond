@@ -5,6 +5,7 @@ import jsonpickle
 
 from asyncio import AbstractEventLoop
 from injectable import inject, injectable
+from typing import Coroutine
 
 from hddmondtools.apiinterface import ApiInterface
 from hddmontools.config_service import ConfigService
@@ -19,7 +20,7 @@ class ClientDataMulticaster: #This is used to keep track of all clients connecte
         self._client_data.update({address: []})
         return self._client_data[address]
 
-    def broadcast(self, data):
+    async def broadcast(self, data):
         for k in self._client_data.keys():
             self._client_data[k].append(data)
 
@@ -41,7 +42,6 @@ class WebsocketServer(ApiInterface):
         # self.localhost_pem = pathlib.Path(__file__).with_name("localhost.pem")
         # self.ssl_context.load_cert_chain(self.localhost_pem)
 
-        self.loopthread = None
         self.ws = None
 
         cfg_svc = inject(ConfigService)
@@ -76,9 +76,16 @@ class WebsocketServer(ApiInterface):
                     data = m.get('data', dict())
 
                     if command != None:
-                        r = self.find_action(str(command), **data) #The main application will register functions to various commands. See if we can find one registered for the command sent.
-                        r_json = jsonpickle.dumps(r, unpicklable=False, make_refs=False) #Note, if no function is found, we will just JSON pickle `None` which will just send a `null` back to the client.
-                        await ws.send(r_json) 
+                        try:
+                            r = self.find_action(str(command), **data) #The main application will register functions to various commands. See if we can find one registered for the command sent.
+                        
+                            if isinstance(r, Coroutine):
+                                r = await r
+                        except Exception as e:
+                            r = {"error": str(e)}
+                        finally:
+                            r_json = jsonpickle.dumps(r, unpicklable=False, make_refs=False) #Note, if no function is found, we will just JSON pickle `None` which will just send a `null` back to the client.
+                            await ws.send(r_json) 
                     else:
                         send = jsonpickle.dumps({"error": "No command to process!"}, unpicklable=False, make_refs=False)
                         await ws.send(send)
@@ -107,18 +114,16 @@ class WebsocketServer(ApiInterface):
     def _make_server(self, loop: AbstractEventLoop):
         asyncio.set_event_loop(loop)
         
-        self.ws = loop.run_until_complete(websockets.serve(self.handler, "0.0.0.0", self.port))
+        
         loop.run_forever()
 
-    def broadcast_data(self, data, *a, **kw):
+    async def broadcast_data(self, data, *a, **kw):
         data_s = jsonpickle.dumps(data, unpicklable=False, make_refs=False)
-        self.clientdata_multicast.broadcast(data_s)
+        await self.clientdata_multicast.broadcast(data_s)
 
-    def start(self):
-        self.loopthread = threading.Thread(target=self._make_server, name='websocket_loop', args=(self.loop,))
-        self.loopthread.start()
+    async def start(self):
+        self.ws = await websockets.serve(self.handler, "0.0.0.0", self.port)
 
-    def stop(self):
-        self.ws.close()
-        self.loop.call_soon_threadsafe(self.loop.stop) #https://stackoverflow.com/questions/46093238/python-asyncio-event-loop-does-not-seem-to-stop-when-stop-method-is-called?answertab=votes#tab-top
-        self.loopthread.join()
+    async def stop(self):
+        await self.ws.close()
+        #self.loop.call_soon_threadsafe(self.loop.stop) #https://stackoverflow.com/questions/46093238/python-asyncio-event-loop-does-not-seem-to-stop-when-stop-method-is-called?answertab=votes#tab-top

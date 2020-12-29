@@ -3,6 +3,7 @@ from pySMART import DeviceList, Device
 
 import threading
 import time
+import asyncio
 
 
 class SmartctlDetector(HddDetector):
@@ -12,18 +13,21 @@ class SmartctlDetector(HddDetector):
         self._dev_cache = []
         self._loopgo = True
         self._poll_interval = poll_interval
-        self._poll_thread = threading.Thread(target=self._poll_method, name="SmartctlDetector")
 
-    def start(self):
-        self._poll_thread.start()
+    async def start(self):
+        asyncio.get_event_loop().create_task(self._poll_method())
 
-    def stop(self):
+    async def stop(self):
         self._loopgo = False
-        self._poll_thread.join()
 
-    def _poll_method(self):
+    def _make_device_list(self):
+        return DeviceList()
+
+    async def _poll_method(self):
+        loop = asyncio.get_event_loop()
         while self._loopgo:
-            devices = DeviceList().devices
+            dev_list = await loop.run_in_executor(None, self._make_device_list)
+            devices = dev_list.devices
             for d in devices:
                 for cd in self._dev_cache:
                     if d.serial == cd.serial:
@@ -38,7 +42,7 @@ class SmartctlDetector(HddDetector):
                 self._do_callback('remove', d)
 
             self._dev_cache = devices.copy() #Our new cache is what we were given this round.
-            time.sleep(self._poll_interval)
+            await asyncio.sleep(self._poll_interval)
 
     def _do_callback(self, action, device: Device):
         for c in self._callbacks:

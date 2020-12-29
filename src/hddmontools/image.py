@@ -196,7 +196,7 @@ class ImageManager:
         self._stop = False
         self.docker_name = "hddmond-upload"
 
-    def start(self):
+    async def start(self):
         self._load_existing_images()
         for p in self._discover_locations:
             print("Looking in {0}...".format(p))
@@ -267,19 +267,9 @@ class ImageManager:
     def get_images(self, *a, **kv):
         return {'onboarded_images': self.added_images, 'discovered_images': self.discovered_images}
 
-    def stop(self):
+    async def stop(self):
         self._stop = True
 
-        remove_list = []
-        for iu in self._image_uploads:
-            self._remove_upload_credentials(iu.user,self.docker_name)
-            remove_list.append(iu)
-
-        for o in remove_list:
-                for i in range(len(self._image_uploads)):
-                    if o == self._image_uploads[i]:
-                        del self._image_uploads[i]
-                        break
 
     
 
