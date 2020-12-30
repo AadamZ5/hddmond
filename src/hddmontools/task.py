@@ -90,7 +90,7 @@ class Task:
         pass
 
     @abstractmethod
-    def abort(self, wait=False):
+    async def abort(self, wait=False):
         '''
         Should be overridden in a sub-class to provide the implimentation of aborting the task.
         If wait is true, the method should wait to return until the task is totally aborted.
@@ -375,7 +375,7 @@ class ExternalTask(Task):
             self.notes.add("An external task was detected running on this storage device.", note_taker="hddmond")
 
         self._pollingInterval = pollingInterval
-        self._pollingThread = threading.Thread(target=self._pollProcess, name=str(self.PID) + "_pollingThread")
+        self._pollingTask = None
         self.returncode = 0
         self._callback = processExitCallback
         self._progressString = "PID " + str(self.PID)
@@ -384,49 +384,50 @@ class ExternalTask(Task):
             self.start()
         
     def start(self, progress_callback=None):
-        if(self._pollingThread.is_alive()):
+        if(self._pollingTask != None):
             return False
         else:
             self.time_started = datetime.datetime.now(datetime.timezone.utc)
-            self._pollingThread.start()
+            self._pollingTask = asyncio.get_event_loop().create_task(self._pollProcess(), name="external_task_poll")
             return True
 
-    def _pollProcess(self):
+    async def _pollProcess(self):
         while self._poll == True and self._finished == False:
             if(self._procview.is_alive == False): # is_alive is a generated bool, evaluating every time we check it. This should be a real-time status. 
                 self._finished = True
             else:
-                time.sleep(self._pollingInterval)
+                asyncio.sleep(self._pollingInterval)
 
         self.notes.add("The process has exited.", note_taker="hddmond")
         self.time_ended = datetime.datetime.now(datetime.timezone.utc)
         if(self._callback != None) and (self._poll == True):
-            self._callback(0) #They might be expecting a return code. We can't obtain it, so assume 0. 
+            # Since callback can be absolutely anything, lets call it in the asyncio executor. This is also appropriate becase
+            # we don't care about the response of the callback. We just wanna send data.
+
+            # Also, they might be expecting a return code. We can't obtain it, so assume 0. 
+            if(isinstance(self._callback, Coroutine)):
+                asyncio.get_event_loop().create_task(self._callback(0)) # We use create_task so we don't block here.
+            else:
+                asyncio.get_event_loop().run_in_executor(None, self._callback, 0) # Again, don't block here.
     
-    def abort(self, wait=False, true_abort=False):
+    async def abort(self, wait=False, true_abort=False):
         if(true_abort == True): #Don't kill the process unless explicitly stated.
             if(self._procview != None) and (self._procview.is_alive == True):
                 self.notes.add("A termination signal was sent to the process.", note_taker="hddmond")
                 self._procview.terminate()
         else:
-            self.detach()
-        
-        if wait == True:
-            print("\tWaiting for {0} to stop...".format(self._pollingThread.name))
-            try:
-                self._pollingThread.join()
-            except RuntimeError:
-                pass
+            if wait == True:
+                await self.detach()
+            else:
+                asyncio.get_event_loop().create_task(self.detach())
 
-    def detach(self):
+    async def detach(self):
         '''
         Should be used only when quitting the hddmon-daemon program
         '''
         self._poll = False
-        try:
-            self._pollingThread.join()
-        except RuntimeError:
-            pass
+        while not self._pollingTask.done():
+            asyncio.sleep(0)
         self.notes.add("The process was detatched from the hddmond monitor.", note_taker="hddmond")
 
     
