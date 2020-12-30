@@ -5,7 +5,9 @@ import jsonpickle
 
 from asyncio import AbstractEventLoop
 from injectable import inject, injectable
-from typing import Coroutine
+from typing import Coroutine, List
+from controllermodel import GenericControllerContext
+from websockets import WebSocketClientProtocol
 
 from hddmondtools.apiinterface import ApiInterface
 from hddmontools.config_service import ConfigService
@@ -14,9 +16,16 @@ from hddmontools.config_service import ConfigService
 class ClientDataMulticaster: #This is used to keep track of all clients connected, to allow multicasting. 
     def __init__(self):
         self._client_data = {} #{client: data[]}
+    
+    #TODO: Add async iterator for async message broadcasting.
+    async def __aiter__(self):
+        return self
+    
+    #TODO: Add async iterator for async message broadcasting.
+    async def __anext__(self):
+        raise StopAsyncIteration
 
     def register_client(self, address):
-        #print("Registering websocket at " + str(address) + " to broadcast list")
         self._client_data.update({address: []})
         return self._client_data[address]
 
@@ -32,11 +41,15 @@ class ClientDataMulticaster: #This is used to keep track of all clients connecte
             print("Error: Tried to delete a websocket that was never registered!")
             pass
 
+class WebsocketServerContext(GenericControllerContext):
+    def __init__(self, client_socket: WebSocketClientProtocol, message_queue: list):
+        self.socket = client_socket
+        self.message_queue = message_queue
+
 @injectable(singleton=True)
 class WebsocketServer(ApiInterface):
     def __init__(self):
         super().__init__()
-        self.loop = asyncio.get_event_loop()
 
         # self.ssl_context = ssl._create_unverified_context(ssl.PROTOCOL_TLS_SERVER)
         # self.localhost_pem = pathlib.Path(__file__).with_name("localhost.pem")
@@ -49,9 +62,6 @@ class WebsocketServer(ApiInterface):
 
         self.clientlist = {} #{address: websocket, ...}
         self.clientdata_multicast = ClientDataMulticaster()
-        
-
-        super(WebsocketServer, self).__init__()
 
     async def register_client(self, websocket):
         self.clientlist.update({websocket.remote_address: websocket})
@@ -60,8 +70,9 @@ class WebsocketServer(ApiInterface):
         del self.clientlist[websocket_addr]
         self.clientdata_multicast.unregister_client(websocket_addr)
 
-    async def consumer_handler(self, ws, path, *args, **kwargs):
+    async def consumer_handler(self, ws, path, data_list, *args, **kwargs):
         await self.register_client(ws)
+        context = WebsocketServerContext(ws, data_list)
         async for message in ws:
             m = {}
             try:
@@ -77,15 +88,16 @@ class WebsocketServer(ApiInterface):
 
                     if command != None:
                         try:
-                            r = self.find_action(str(command), **data) #The main application will register functions to various commands. See if we can find one registered for the command sent.
-                        
+                            r = self.find_action(str(command), _context=context, **data) #The main application will register functions to various commands. See if we can find one registered for the command sent.
+
                             if isinstance(r, Coroutine):
                                 r = await r
                         except Exception as e:
                             r = {"error": str(e)}
                         finally:
-                            r_json = jsonpickle.dumps(r, unpicklable=False, make_refs=False) #Note, if no function is found, we will just JSON pickle `None` which will just send a `null` back to the client.
-                            await ws.send(r_json) 
+                            if r != None:
+                                r_json = jsonpickle.dumps(r, unpicklable=False, make_refs=False)
+                                await ws.send(r_json) 
                     else:
                         send = jsonpickle.dumps({"error": "No command to process!"}, unpicklable=False, make_refs=False)
                         await ws.send(send)
@@ -96,26 +108,20 @@ class WebsocketServer(ApiInterface):
 
         await self.unregister_client(ws.remote_address)
         
-    async def producer_handler(self, ws, path, *args, **kw):
-        data_list = self.clientdata_multicast.register_client(ws.remote_address)
+    async def producer_handler(self, ws, path, data_list, *args, **kw):
         while True:
             if(len(data_list) <= 0):
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.1)
             else:
                 await ws.send(data_list.pop(0))
 
     async def handler(self, ws, path, *args, **kw):
-        c_task = asyncio.ensure_future(self.consumer_handler(ws, path, *args, **kw))
-        p_task = asyncio.ensure_future(self.producer_handler(ws, path, *args, **kw))
+        data_list = self.clientdata_multicast.register_client(ws.remote_address)
+        c_task = asyncio.ensure_future(self.consumer_handler(ws, path, data_list, *args, **kw))
+        p_task = asyncio.ensure_future(self.producer_handler(ws, path, data_list, *args, **kw))
         done, pending = await asyncio.wait([c_task, p_task,], return_when=asyncio.FIRST_COMPLETED)
         for task in pending: #This executes when the async call above finishes.
             task.cancel() #Cancel any remaining task. 
-
-    def _make_server(self, loop: AbstractEventLoop):
-        asyncio.set_event_loop(loop)
-        
-        
-        loop.run_forever()
 
     async def broadcast_data(self, data, *a, **kw):
         data_s = jsonpickle.dumps(data, unpicklable=False, make_refs=False)

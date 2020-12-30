@@ -1,5 +1,5 @@
 additional-urwid-widgets==0.4.1
-git+https://github.com/priv-kweihmann/astroid@issue-800
+astroid>=1.5.0
 coloredlogs==14.0
 certifi==2020.4.5.1
 chardet==3.0.4

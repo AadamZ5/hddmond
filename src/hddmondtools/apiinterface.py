@@ -11,8 +11,8 @@ class ApiInterface(GenericController, ABC):
         self._description_list = {} #dict of {command_name: description}
         self._ufc = 0 # Un-identified function counter
 
-    def find_action(self, command: str, *a, **kw):
-        return self.execute_action(command, *a, **kw)
+    def find_action(self, command: str, *a, _context=None, **kw):
+        return self.execute_action(command, *a, _context=_context, **kw)
 
     @abstractmethod
     def broadcast_data(self, data, *a, **kw):
