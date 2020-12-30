@@ -15,6 +15,10 @@ import datetime
 from hddmontools.hdd_interface import TaskQueueInterface
 from injectable import Autowired, autowired, injectable
 from abc import ABC, abstractmethod
+from typing import Coroutine
+
+import asyncio
+
 
 class TaskResult(enum.Enum):
     FINISHED = 1,
@@ -195,29 +199,31 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
             self._create_queue_thread()
 
     def _task_progresscb(self, progress=None, string=None):
-
-        #   Helper method to notify the progress of the current task.
-
+        """
+        Helper method to notify the progress of the current task.
+        """
         self._taskchanged_cb(action='taskprogress', data={'taskqueue': self})
 
     def _create_queue_thread(self):
-
-        #   Helper method to create the queue thread if none exists in the moment.
-
-        self._queue_thread = threading.Thread(target=self._launch_new_task)
-        self._queue_thread.start() #This thread should exit soon after the start() function of the task exits. This thread is just to offload the sleep between tasks, and detach from the last finished thread.
-
-    def _launch_new_task(self): 
+        """
+        Helper method to create the queue thread if none exists in the moment.
+        """
+        loop = asyncio.get_event_loop()
+        self._queue_thread = loop.create_task(self._launch_new_task()) #This async task should exit soon after the start() function of the task exits. This async task is just to offload the sleep between tasks, and detach from the last finished thread.
+    
+    async def _launch_new_task(self): 
 
         #   This method holds the logic for determining to run another task.
 
         if(len(self.Queue) != 0) and self.Pause != True:
-            time.sleep(self.between_task_wait)
+            asyncio.sleep(self.between_task_wait)
             tup = self.Queue.pop(0)
             pcb = tup[0]
             t = tup[1]
             cb = tup[2]
-            if(pcb != None and callable(pcb)):
+            if(pcb != None and isinstance(pcb, Coroutine)):
+                await pcb()
+            elif(pcb != None and callable(pcb)):
                 pcb()
             self.CurrentTask = t
             self._currentcb = cb
@@ -325,7 +331,10 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
             return
 
         if self._task_change_callback != None and callable(self._task_change_callback):
-            self._task_change_callback(*args, **kw)
+            if(isinstance(self._task_change_callback, Coroutine)):
+                await self._task_change_callback(*args, **kw)
+            else:
+                self._task_change_callback(*args, **kw)
 
 class ExternalTask(Task):
 

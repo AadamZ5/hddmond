@@ -19,17 +19,6 @@ from hddmondtools.hddmon_dataclasses import SmartData
 #
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  
 #
-class HealthStatus(enum.Enum):
-    Failing = 0,
-    ShortTesting = 1,
-    LongTesting = 2,
-    Default = 3,
-    Passing = 4,
-    Warn = 5,
-    Unknown = 6,
-
-    def __str__(self):
-        return self.name
 
 class Hdd(HddInterface):
     """
