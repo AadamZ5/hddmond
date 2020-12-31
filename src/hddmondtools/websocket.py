@@ -131,5 +131,6 @@ class WebsocketServer(ApiInterface):
         self.ws = await websockets.serve(self.handler, "0.0.0.0", self.port)
 
     async def stop(self):
-        await self.ws.close()
+        self.ws.close()
+        await self.ws.wait_closed()
         #self.loop.call_soon_threadsafe(self.loop.stop) #https://stackoverflow.com/questions/46093238/python-asyncio-event-loop-does-not-seem-to-stop-when-stop-method-is-called?answertab=votes#tab-top

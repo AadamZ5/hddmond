@@ -132,13 +132,25 @@ if __name__ == '__main__':
 
 
     app = App()
-    signal.signal(signal.SIGINT, app.stop)
-    signal.signal(signal.SIGQUIT, app.stop)
-    signal.signal(signal.SIGTERM, app.stop)
-    #signal.signal(signal.SIGKILL, app.stop) #We should let this kill the program instead of trying to handle it
-    signal.signal(signal.SIGUSR1, app.stop)
     
     loop = asyncio.get_event_loop()
+
+    async def async_stop():
+        await app.stop()
+
+    def async_is_over(*a, **kw):
+        asyncio.get_event_loop().stop()
+
+    def stop_shim():
+        exit_task = asyncio.get_event_loop().create_task(async_stop(), name="exit_task")
+        exit_task.add_done_callback(async_is_over)
+
+    loop.add_signal_handler(signal.SIGINT, stop_shim)
+    loop.add_signal_handler(signal.SIGQUIT, stop_shim)
+    loop.add_signal_handler(signal.SIGTERM, stop_shim)
+    #loop.add_signal_handler(signal.SIGKILL, stop_shim) #We should let this kill the program instead of trying to handle it
+    loop.add_signal_handler(signal.SIGUSR1, stop_shim)
+
     loop.run_until_complete(app.start())
     loop.run_forever()
 

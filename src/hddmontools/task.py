@@ -150,8 +150,10 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
             if(len(queue_preset) > self.maxqueue):
                 self.Queue = (queue_preset[0:self.maxqueue-1]).copy() #Only take the maximum allowed tasks from the preset.
         self.Queue = queue_preset #list of (preexec_cb, task, callback)
+        self._active_callback_queue = asyncio.queues.Queue()
         self.history = []
         self._task_change_callback = task_change_callback
+        self._loop = asyncio.get_event_loop()
 
     def AddTask(self, task: Task, preexec_cb=None, index=None):
         '''
@@ -202,7 +204,21 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
         """
         Helper method to notify the progress of the current task.
         """
-        self._taskchanged_cb(action='taskprogress', data={'taskqueue': self})
+        
+        if threading.current_thread() != threading.main_thread():
+
+            #! Important! Since some tasks use threads to report progress, higher-up async stuff will fail!
+            #  Use loop.call_soon_threadsafe to schedule async tasks back in the main loop.
+
+            async def _callback_shim():
+                nonlocal self
+                self._taskchanged_cb(action='taskprogress', data={'taskqueue': self})
+            
+            asyncio.run_coroutine_threadsafe(_callback_shim(), self._loop)
+
+        else:
+
+            self._taskchanged_cb(action='taskprogress', data={'taskqueue': self})
 
     def _create_queue_thread(self):
         """
@@ -331,10 +347,23 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
             return
 
         if self._task_change_callback != None and callable(self._task_change_callback):
-            if(isinstance(self._task_change_callback, Coroutine)):
-                asyncio.get_event_loop().create_task(self._task_change_callback(*args, **kw))
+            #TODO: Mix this up the right way to have the most straightforward logic.
+            if threading.current_thread() != threading.main_thread():
+
+                #! Important! Since some tasks use threads to call back, higher-up async stuff will fail!
+                #  Use loop.call_soon_threadsafe or asyncio.run_coroutine_threadsafe to schedule async tasks back in the main loop.
+
+                async def _callback_shim():
+                    nonlocal self
+                    nonlocal args
+                    nonlocal kw
+                    self._task_change_callback(*args, **kw)
+                asyncio.run_coroutine_threadsafe(_callback_shim(), self._loop)
             else:
-                self._task_change_callback(*args, **kw)
+                if(isinstance(self._task_change_callback, Coroutine)):
+                    asyncio.get_event_loop().create_task(self._task_change_callback(*args, **kw))
+                else:
+                    self._task_change_callback(*args, **kw)
 
 class ExternalTask(Task):
 
