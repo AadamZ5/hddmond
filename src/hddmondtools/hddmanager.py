@@ -511,9 +511,10 @@ class ListModel:
         print("Stopping Smartctl poller...")
         await self.detector.stop()
         print("Stopping HDDs...")
+        #TODO: Schedule all disconnections concurrently!
         for h in self.hdds:
             print("\tShutting down {0}...".format(h.serial))
-            h.disconnect()
+            await h.disconnect()
 
         print("Disconnecting database...")
         if self.database != None:

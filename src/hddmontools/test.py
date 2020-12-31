@@ -117,7 +117,7 @@ class Test(Task):
             if(r == 1):
                 if(p != None):
                     self._progressHandler(p)
-                asyncio.sleep(args[0])
+                await asyncio.sleep(args[0])
             else:
                 self._testing = False
 
@@ -141,16 +141,16 @@ class Test(Task):
         if wait == True:
             print("\tWaiting for {0} to stop...".format(self._testingTask.name))
             while not self._testingTask.done():
-                asyncio.sleep(0)
+                await asyncio.sleep(0)
 
-    def detach(self):
+    async def detach(self):
         '''
         Closes this test object without aborting the offline test.
         '''
         
         self._testing = False
         while not self._testingTask.done():
-            asyncio.sleep(0)
+            await asyncio.sleep(0)
         self.notes.add("Detached test, no longer monitored by hddmon.", note_taker="hddmond")
 
     def _processReturnCode(self, r, t):

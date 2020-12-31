@@ -216,7 +216,7 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
         #   This method holds the logic for determining to run another task.
 
         if(len(self.Queue) != 0) and self.Pause != True:
-            asyncio.sleep(self.between_task_wait)
+            await asyncio.sleep(self.between_task_wait)
             tup = self.Queue.pop(0)
             pcb = tup[0]
             t = tup[1]
@@ -332,7 +332,7 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
 
         if self._task_change_callback != None and callable(self._task_change_callback):
             if(isinstance(self._task_change_callback, Coroutine)):
-                await self._task_change_callback(*args, **kw)
+                asyncio.get_event_loop().create_task(self._task_change_callback(*args, **kw))
             else:
                 self._task_change_callback(*args, **kw)
 
@@ -396,7 +396,7 @@ class ExternalTask(Task):
             if(self._procview.is_alive == False): # is_alive is a generated bool, evaluating every time we check it. This should be a real-time status. 
                 self._finished = True
             else:
-                asyncio.sleep(self._pollingInterval)
+                await asyncio.sleep(self._pollingInterval)
 
         self.notes.add("The process has exited.", note_taker="hddmond")
         self.time_ended = datetime.datetime.now(datetime.timezone.utc)
@@ -427,7 +427,7 @@ class ExternalTask(Task):
         '''
         self._poll = False
         while not self._pollingTask.done():
-            asyncio.sleep(0)
+            await asyncio.sleep(0)
         self.notes.add("The process was detatched from the hddmond monitor.", note_taker="hddmond")
 
     
@@ -511,7 +511,7 @@ class EraseTask(Task):
         if wait == True:
             print("\tWaiting for {0} to stop...".format(self._pollingTask.name))
             while not self._pollingTask.done():
-                asyncio.sleep(0)
+                await asyncio.sleep(0)
 
 
     async def _monitorProgress(self):

@@ -251,17 +251,17 @@ class Hdd(HddInterface):
         task_svc = TaskService()
         return task_svc.display_names.copy()
 
-    def disconnect(self):
+    async def disconnect(self):
         """
         Block and finalize anything on the HDD
         """
         if(self.TaskQueue.CurrentTask != None) and (self.TaskQueue.Error != True):
-                if(isinstance(self.TaskQueue.CurrentTask, ExternalTask)) or (isinstance(self.TaskQueue.CurrentTask, Test)):
-                    print("Detaching task " + str(self.TaskQueue.CurrentTask.name) + " on " + self.serial)
-                    self.TaskQueue.CurrentTask.detach()
-                else:
-                    print("Aborting task " + str(self.TaskQueue.CurrentTask.name) + " (PID: " + str(self.TaskQueue.CurrentTask.PID) + ") on " + self.serial)
-                    self.TaskQueue.CurrentTask.abort(wait=True) #Wait for abortion so database entries can be entered before we disconnect the database.
+            if(isinstance(self.TaskQueue.CurrentTask, ExternalTask)) or (isinstance(self.TaskQueue.CurrentTask, Test)):
+                print("Detaching task " + str(self.TaskQueue.CurrentTask.name) + " on " + self.serial)
+                await self.TaskQueue.CurrentTask.detach()
+            else:
+                print("Aborting task " + str(self.TaskQueue.CurrentTask.name) + " (PID: " + str(self.TaskQueue.CurrentTask.PID) + ") on " + self.serial)
+                await self.TaskQueue.CurrentTask.abort(wait=True) #Wait for abortion so database entries can be entered before we disconnect the database.
             
     def __str__(self):
         if(self.serial):
