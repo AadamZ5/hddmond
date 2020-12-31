@@ -459,7 +459,7 @@ class EraseTask(Task):
         self._started = False
         self._returncode = None
         self._pollingInterval = pollingInterval
-        self._pollingThread = threading.Thread(target=self._monitorProgress, name=str(self.node) + "_eraseTask")
+        self._pollingTask = None #threading.Thread(target=self._monitorProgress, name=str(self.node) + "_eraseTask")
         self._subproc = None
         self._PID = None
         self._procview = None
@@ -496,28 +496,25 @@ class EraseTask(Task):
     def start(self, progress_callback=None):
         self.time_started = datetime.datetime.now(datetime.timezone.utc)
         self._progress_cb = progress_callback
-        self._subproc = subprocess.Popen(['scrub', '-f', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        self._subproc = asyncio.create_subprocess_exec('scrub', '-f', '-p', 'fillff', self.node, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self._PID = self._subproc.pid
         self._procview = proc.core.Process.from_pid(self._PID)
-        self._pollingThread.start()
+        self._pollingTask = asyncio.get_event_loop().create_task(self._monitorProgress(), name="erase_task_poll")
         self._progressString = "Erasing" + (" " + str(self.Progress) + "%" if self.Capacity != 0 else '') 
         self.notes.add("Erasing was started on this storage device.", note_taker="hddmond")
 
-
-    def abort(self, wait=False):
+    async def abort(self, wait=False):
         if(self._subproc):
             if(self.Finished == False):
                 self.notes.add("Erase task aborted at " + str(self.Progress) + "%.", note_taker="hddmond")
             self._subproc.terminate()
         if wait == True:
-            print("\tWaiting for {0} to stop...".format(self._pollingThread.name))
-            try:
-                self._pollingThread.join()
-            except RuntimeError:
-                pass
+            print("\tWaiting for {0} to stop...".format(self._pollingTask.name))
+            while not self._pollingTask.done():
+                asyncio.sleep(0)
 
 
-    def _monitorProgress(self):
+    async def _monitorProgress(self):
 
         if(self.Capacity > 0):
             self._progress = int(self._procview.io['write_bytes'] / self._cap_in_bytes)
@@ -532,7 +529,7 @@ class EraseTask(Task):
         lastprogress = self._progress
         while self._monitor and (self._returncode == None):
             
-            self._returncode = self._subproc.poll()
+            self._returncode = self._subproc.returncode
             if(self._returncode == None):
                 io = self._procview.io
                 if(self.Capacity > 0):
@@ -548,7 +545,7 @@ class EraseTask(Task):
                         self._progress_cb(self.Progress, self._progressString)
                     lastprogress = self._progress
         self.returncode = self._returncode
-        self.time_started = datetime.datetime.now(datetime.timezone.utc)
+        self.time_ended = datetime.datetime.now(datetime.timezone.utc)
         if(self._returncode == 0):
             self.notes.add("Full erase performed on storage device. Wrote 0xFF to all bits.", note_taker="hddmond")
         else:
@@ -558,6 +555,7 @@ class EraseTask(Task):
 
 TaskService.register(EraseTask.display_name, EraseTask)
 
+### ImageTask needs some serious TLC. Clonezilla isn't reliable for this task. TODO: Research Partclone for this task.
 class ImageTask(Task):
 
     display_name = "Image"
