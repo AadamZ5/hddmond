@@ -3,6 +3,9 @@ import threading
 import time
 import enum
 import datetime
+import asyncio
+import functools
+
 from .task import Task
 from .task_service import TaskService
 
@@ -78,16 +81,14 @@ class Test(Task):
         self.result = None
         self._progress = 0
         self._progressCallback = progressCallback
+        self._pollingInterval = pollingInterval
         self.date_completed = None
         self.date_started = None
         self.passed = False
         self._pollingInterval = pollingInterval
         self._testing = True
         self._finished = False
-        if(self.test_type == Test.Existing):
-            self._testingThread = threading.Thread(target=self._loose_test, args=(pollingInterval,))
-        else:
-            self._testingThread = threading.Thread(target=self._captive_test, args=(self.test_type, pollingInterval,))
+        self._testingTask = None
         self._started = False
         super(Test, self).__init__("Long test" if self.test_type.lower() == Test.Long else ("Short test" if self.test_type.lower() == Test.Short else "Test"), hdd)
         self._progressString = "Test"
@@ -98,31 +99,34 @@ class Test(Task):
     def start(self, progress_callback=None):
         if not self._started:
             if(self.test_type == Test.Existing):
+                self._testingTask = asyncio.get_event_loop().create_task(self._loose_test(self._pollingInterval), name="test_task_loosepoll")
+            else:
+                self._testingTask = asyncio.get_event_loop().create_task(self._captive_test(self.test_type, self._pollingInterval), name="test_task_poll")
+            if(self.test_type == Test.Existing):
                 self.notes.add("Monitoring existing test on storage device.", note_taker="hddmond")
             else:
                 self.notes.add("Started " + self.test_type + " SMART test on storage device.", note_taker="hddmond")
             self._progress_cb = progress_callback
-            self._testingThread.start()
             self._started = True
         else:
             return
 
-    def _loose_test(self, *args):
+    async def _loose_test(self, *args):
         while self._testing:
-            r, t, p = self.device.get_selftest_result()
+            r, t, p = await asyncio.get_event_loop().run_in_executor(None, self.device.get_selftest_result)
             if(r == 1):
                 if(p != None):
                     self._progressHandler(p)
-                time.sleep(args[0])
+                asyncio.sleep(args[0])
             else:
                 self._testing = False
 
-        self._processReturnCode(r, t)     
+        self._processReturnCode(r, t)    
         self._callCallbacks()
 
-    def _captive_test(self, *args):
+    async def _captive_test(self, test_type, polling_interval):
         self.time_started = datetime.datetime.now(datetime.timezone.utc)
-        r, t = self.device.run_selftest_and_wait(args[0], polling=args[1], progress_handler=self._progressHandler)
+        r, t = await asyncio.get_event_loop().run_in_executor(None, functools.partial(self.device.run_selftest_and_wait, test_type, polling=polling_interval, progress_handler=self._progressHandler))
         self.time_ended = datetime.datetime.now(datetime.timezone.utc)
         #After we finish the test
         self._processReturnCode(r, t)
@@ -130,16 +134,14 @@ class Test(Task):
         self._finished = True
         self._callCallbacks()
 
-    def abort(self, wait=False):
+    async def abort(self, wait=False):
         self.notes.add("Aborted test.", note_taker="hddmond")
-        self.device.abort_selftest()
+        await asyncio.get_event_loop().run_in_executor(None, self.device.abort_selftest)
         #The _test function takes care of the result management
         if wait == True:
-            print("\tWaiting for {0} to stop...".format(self._testingThread.name))
-            try:
-                self._testingThread.join()
-            except RuntimeError:
-                pass
+            print("\tWaiting for {0} to stop...".format(self._testingTask.name))
+            while not self._testingTask.done():
+                asyncio.sleep(0)
 
     def detach(self):
         '''
@@ -147,7 +149,8 @@ class Test(Task):
         '''
         
         self._testing = False
-        self._testingThread.join()
+        while not self._testingTask.done():
+            asyncio.sleep(0)
         self.notes.add("Detached test, no longer monitored by hddmon.", note_taker="hddmond")
 
     def _processReturnCode(self, r, t):
