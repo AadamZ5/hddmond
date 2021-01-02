@@ -28,6 +28,7 @@ from hddmondtools.websocket import WebsocketServer
 from injectable import inject
 from pathlib import Path
 
+import asyncio
 import inspect
 
 class ListModel:
@@ -181,7 +182,7 @@ class ListModel:
         return False
 
     @WebsocketServer.register_action(action="hdds")
-    def sendHdds(self, *args, **kw):
+    async def sendHdds(self, *args, **kw):
         """
         Retreive a list of the currently connected HDDs, or a single one if `serial` is specified.
         """
@@ -196,13 +197,18 @@ class ListModel:
             return {'error': 'No hdd found with serial {0}'.format(serial)}
 
         else:
-            hdddata = []
+            futures = []
+            loop = asyncio.get_event_loop()
             for h in self.hdds:
-                hdddata.append(HddData.FromHdd(h))
-            return {'hdds': hdddata}
+                future = loop.run_in_executor(None, HddData.FromHdd, h)
+                futures.append(future)
+
+            results = await asyncio.gather(*futures)
+            
+            return {'hdds': results}
         return {'error': 'No hdd(s) found for constraints!'}
 
-    def sendTaskTypes(self, *args, **kw):
+    async def sendTaskTypes(self, *args, **kw):
         """
         Returns each HDD's supported task types.
         """
@@ -215,7 +221,7 @@ class ListModel:
         return {'task_types': hdd_dict}
 
     @WebsocketServer.register_action(action="addtask")
-    def taskBySerial(self, *args, **kw):
+    async def taskBySerial(self, *args, **kw):
         """
         Attempt to queue a task on HDDs. Allows multicasting.
         """
@@ -263,7 +269,7 @@ class ListModel:
         return {'errors': errors}
 
     @WebsocketServer.register_action(action='aborttask')
-    def abortTaskBySerial(self, *args, **kw):
+    async def abortTaskBySerial(self, *args, **kw):
         """
         Aborts a task on the HDDs specified. Allows multicasting.
         """
@@ -285,12 +291,10 @@ class ListModel:
         return True
 
     @WebsocketServer.register_action(action='modifyqueue')
-    def modifyTaskQueue(self, *args, **kw):
+    async def modifyTaskQueue(self, *args, **kw):
         """
         Modifies the task queue. Used for "repositioning" tasks in the queue.
         """
-        l = threading.Lock()
-        l.acquire()
 
         serial = kw.get('serial', None)
         action = kw.get('action', None)
@@ -324,16 +328,13 @@ class ListModel:
                     return (False, 'Unknown modifyqueue action \'' + str(action) + '\'')
                 break
 
-        l.release()
         return True
 
     @WebsocketServer.register_action(action='blacklist')
-    def blacklist(self, *a, **k):
+    async def blacklist(self, *a, **k):
         """
         Blacklists the specified HDDs. Allows multicasting.
         """
-        l = threading.Lock()
-        l.acquire()
         serials = k.get('serials', None)
 
         if serials == None or type(serials) != list:
@@ -347,18 +348,19 @@ class ListModel:
                     break
 
         self.update_blacklist_file()
-        l.release()
         return True
 
     @WebsocketServer.register_action(action='blacklisted')
-    def sendBlacklist(self, *a, **k):
+    async def sendBlacklist(self, *a, **k):
         """
         Sends the blacklist of HDDs.
         """
-        return {'blacklist': self.load_blacklist_file()}
+        loop = asyncio.get_event_loop()
+        blacklist = await loop.run_in_executor(None, self.load_blacklist_file)
+        return {'blacklist': blacklist}
 
     @WebsocketServer.register_action(action='pausequeue')
-    def pauseQueue(self, *a, **k):
+    async def pauseQueue(self, *a, **k):
         l = threading.Lock()
         l.acquire()
         serials = k.get('serials', None)
@@ -376,11 +378,10 @@ class ListModel:
         l.release()
         return True
 
-    def updateLoop(self):
+    async def updateLoop(self):
         '''
         This loop should be run in a separate thread. Watches for external processes and smart tests not initialized by this program.
         '''
-        print("Loop running")
         smart_coldcall_interval = 30.0 #seconds
         while self._loopgo:
             busy = False
@@ -403,7 +404,7 @@ class ListModel:
                     if(task != None):
                         hdd.TaskQueue.AddTask(ExternalTask(hdd, task.pid))
             self.stuffRunning = busy
-            time.sleep(1)
+            await asyncio.sleep(1)
 
     def updateDevices(self, ignoreNodes = []):
         """
@@ -457,8 +458,6 @@ class ListModel:
         if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
             self.task_change_outside_callback({'update': 'add', 'data': HddData.FromHdd(hdd)})
         
-        
-
         return True
 
     def removeHddHdd(self, hdd: Hdd):
@@ -496,30 +495,26 @@ class ListModel:
         #print("No process found for " + str(name) + ".")
         return None
 
-    def start(self):
-        
-
-        # self.observer = pyudev.MonitorObserver(self.monitor, self.deviceAdded)
-        # self.observer.start()
+    async def start(self):
         self._loopgo = True
 
         self.remote_hdd_server.start()
-        #self.updateDevices()
         print("Done initializing.")
-        self.detector.start()
-        self.updateLoop()
+        await self.detector.start()
+        asyncio.get_event_loop().create_task(self.updateLoop())
 
-    def stop(self):
+    async def stop(self):
         print("Stopping hddmanager...")
         self._loopgo = False
         # print("Stopping udev observer...")
         # self.observer.stop()
         print("Stopping Smartctl poller...")
-        self.detector.stop()
+        await self.detector.stop()
         print("Stopping HDDs...")
+        #TODO: Schedule all disconnections concurrently!
         for h in self.hdds:
             print("\tShutting down {0}...".format(h.serial))
-            h.disconnect()
+            await h.disconnect()
 
         print("Disconnecting database...")
         if self.database != None:

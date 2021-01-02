@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from py_ts_interfaces import Interface
-from typing import List, Tuple, Dict
+from typing import *
 import datetime
 #
 #   The purpose of this file is to hold data classes that correspond to typescript interface definitions on the web app thing.
@@ -157,7 +157,7 @@ class HddData(Interface):
     assessment: str
     task_queue: TaskQueueData
     node: str
-    port: str
+    port: Optional[str]
     smart: SmartData
     notes: List[NoteData]
     seen: int

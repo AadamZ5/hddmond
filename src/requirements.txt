@@ -1,5 +1,5 @@
 additional-urwid-widgets==0.4.1
-git+https://github.com/priv-kweihmann/astroid@issue-800
+git+https://github.com/PyCQA/astroid@master
 coloredlogs==14.0
 certifi==2020.4.5.1
 chardet==3.0.4
@@ -18,7 +18,7 @@ mccabe==0.6.1
 monotonic==1.5
 #pkg-resources==0.0.0
 git+https://github.com/AadamZ5/python-proc.git@dev
-git+https://github.com/AadamZ5/py-controller-model@main
+git+https://github.com/AadamZ5/py-controller-model@dev
 property-manager==3.0
 py-ts-interfaces==0.2.0
 git+https://github.com/freenas/py-SMART@master

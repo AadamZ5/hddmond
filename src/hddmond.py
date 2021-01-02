@@ -4,6 +4,8 @@ from injectable import load_injection_container, Autowired, autowired, inject
 import sys
 import os
 import signal
+import asyncio
+import logging
 
 # PACKAGE_PARENT = '..'
 # SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__))))
@@ -29,8 +31,8 @@ class App:
         self.ws = inject(WebsocketServer)
         self.ws.connect_instance(self.list) #All API functions are defined in ListModel
 
-    def ws_update(self, payload):
-        self.ws.broadcast_data(payload)
+    async def ws_update(self, payload):
+        await self.ws.broadcast_data(payload)
         
     def image_shim(self, *args, **kw):
         imags = []
@@ -40,18 +42,22 @@ class App:
         for i in self.images.discovered_images:
             disc.append(ImageData.FromDiskImage(i))
         return {'onboarded_images': imags, 'discovered_images': disc}
-    def start(self):
-        self.images.start()
-        self.ws.start()
-        self.list.start()
-    def stop(self, *args, **kwargs):
+
+    async def start(self):
+        await self.images.start()
+        await self.ws.start()
+        await self.list.start()
+
+    async def stop(self, *args, **kwargs):
         print("Stopping...")
-        self.ws.stop()
-        self.list.stop()
-        self.images.stop()
-    def task_changed_cb(self, payload):
-        self.ws_update(payload)
+        await self.ws.stop()
+        await self.list.stop()
+        await self.images.stop()
         
+    def task_changed_cb(self, payload):
+        loop = asyncio.get_event_loop()
+        loop.create_task(self.ws_update(payload))
+    
 
 
 if __name__ == '__main__':
@@ -129,11 +135,27 @@ if __name__ == '__main__':
 
 
     app = App()
-    signal.signal(signal.SIGINT, app.stop)
-    signal.signal(signal.SIGQUIT, app.stop)
-    signal.signal(signal.SIGTERM, app.stop)
-    #signal.signal(signal.SIGKILL, app.stop) #We should let this kill the program instead of trying to handle it
-    signal.signal(signal.SIGUSR1, app.stop)
-    app.start()
+    
+    loop = asyncio.get_event_loop()
+
+    async def async_stop():
+        await app.stop()
+
+    def async_is_over(*a, **kw):
+        asyncio.get_event_loop().stop()
+
+    def stop_shim():
+        exit_task = asyncio.get_event_loop().create_task(async_stop(), name="exit_task")
+        exit_task.add_done_callback(async_is_over)
+
+    loop.add_signal_handler(signal.SIGINT, stop_shim)
+    loop.add_signal_handler(signal.SIGQUIT, stop_shim)
+    loop.add_signal_handler(signal.SIGTERM, stop_shim)
+    #loop.add_signal_handler(signal.SIGKILL, stop_shim) #We should let this kill the program instead of trying to handle it
+    loop.add_signal_handler(signal.SIGUSR1, stop_shim)
+
+    loop.run_until_complete(app.start())
+    loop.run_forever()
+
     print("Done.")
     exit(0)

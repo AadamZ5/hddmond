@@ -15,6 +15,10 @@ import datetime
 from hddmontools.hdd_interface import TaskQueueInterface
 from injectable import Autowired, autowired, injectable
 from abc import ABC, abstractmethod
+from typing import Coroutine
+
+import asyncio
+
 
 class TaskResult(enum.Enum):
     FINISHED = 1,
@@ -86,7 +90,7 @@ class Task:
         pass
 
     @abstractmethod
-    def abort(self, wait=False):
+    async def abort(self, wait=False):
         '''
         Should be overridden in a sub-class to provide the implimentation of aborting the task.
         If wait is true, the method should wait to return until the task is totally aborted.
@@ -146,8 +150,10 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
             if(len(queue_preset) > self.maxqueue):
                 self.Queue = (queue_preset[0:self.maxqueue-1]).copy() #Only take the maximum allowed tasks from the preset.
         self.Queue = queue_preset #list of (preexec_cb, task, callback)
+        self._active_callback_queue = asyncio.queues.Queue()
         self.history = []
         self._task_change_callback = task_change_callback
+        self._loop = asyncio.get_event_loop()
 
     def AddTask(self, task: Task, preexec_cb=None, index=None):
         '''
@@ -195,29 +201,31 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
             self._create_queue_thread()
 
     def _task_progresscb(self, progress=None, string=None):
-
-        #   Helper method to notify the progress of the current task.
-
+        """
+        Helper method to notify the progress of the current task.
+        """
         self._taskchanged_cb(action='taskprogress', data={'taskqueue': self})
 
     def _create_queue_thread(self):
-
-        #   Helper method to create the queue thread if none exists in the moment.
-
-        self._queue_thread = threading.Thread(target=self._launch_new_task)
-        self._queue_thread.start() #This thread should exit soon after the start() function of the task exits. This thread is just to offload the sleep between tasks, and detach from the last finished thread.
-
-    def _launch_new_task(self): 
+        """
+        Helper method to create the queue thread if none exists in the moment.
+        """
+        loop = asyncio.get_event_loop()
+        self._queue_thread = loop.create_task(self._launch_new_task()) #This async task should exit soon after the start() function of the task exits. This async task is just to offload the sleep between tasks, and detach from the last finished thread.
+    
+    async def _launch_new_task(self): 
 
         #   This method holds the logic for determining to run another task.
 
         if(len(self.Queue) != 0) and self.Pause != True:
-            time.sleep(self.between_task_wait)
+            await asyncio.sleep(self.between_task_wait)
             tup = self.Queue.pop(0)
             pcb = tup[0]
             t = tup[1]
             cb = tup[2]
-            if(pcb != None and callable(pcb)):
+            if(pcb != None and isinstance(pcb, Coroutine)):
+                await pcb()
+            elif(pcb != None and callable(pcb)):
                 pcb()
             self.CurrentTask = t
             self._currentcb = cb
@@ -325,7 +333,23 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
             return
 
         if self._task_change_callback != None and callable(self._task_change_callback):
-            self._task_change_callback(*args, **kw)
+            if threading.current_thread() != threading.main_thread():
+
+                #! Important! Since some tasks use threads to call back, higher-up async stuff will fail!
+                #  Use loop.call_soon_threadsafe or asyncio.run_coroutine_threadsafe to schedule async tasks back in the main loop.
+
+                async def _callback_shim():
+                    nonlocal self
+                    nonlocal args
+                    nonlocal kw
+                    self._task_change_callback(*args, **kw)
+
+                asyncio.run_coroutine_threadsafe(_callback_shim(), self._loop)
+            else:
+                if(isinstance(self._task_change_callback, Coroutine)):
+                    asyncio.get_event_loop().create_task(self._task_change_callback(*args, **kw))
+                else:
+                    self._task_change_callback(*args, **kw)
 
 class ExternalTask(Task):
 
@@ -366,7 +390,7 @@ class ExternalTask(Task):
             self.notes.add("An external task was detected running on this storage device.", note_taker="hddmond")
 
         self._pollingInterval = pollingInterval
-        self._pollingThread = threading.Thread(target=self._pollProcess, name=str(self.PID) + "_pollingThread")
+        self._pollingTask = None
         self.returncode = 0
         self._callback = processExitCallback
         self._progressString = "PID " + str(self.PID)
@@ -375,49 +399,50 @@ class ExternalTask(Task):
             self.start()
         
     def start(self, progress_callback=None):
-        if(self._pollingThread.is_alive()):
+        if(self._pollingTask != None):
             return False
         else:
             self.time_started = datetime.datetime.now(datetime.timezone.utc)
-            self._pollingThread.start()
+            self._pollingTask = asyncio.get_event_loop().create_task(self._pollProcess(), name="external_task_poll")
             return True
 
-    def _pollProcess(self):
+    async def _pollProcess(self):
         while self._poll == True and self._finished == False:
             if(self._procview.is_alive == False): # is_alive is a generated bool, evaluating every time we check it. This should be a real-time status. 
                 self._finished = True
             else:
-                time.sleep(self._pollingInterval)
+                await asyncio.sleep(self._pollingInterval)
 
         self.notes.add("The process has exited.", note_taker="hddmond")
         self.time_ended = datetime.datetime.now(datetime.timezone.utc)
         if(self._callback != None) and (self._poll == True):
-            self._callback(0) #They might be expecting a return code. We can't obtain it, so assume 0. 
+            # Since callback can be absolutely anything, lets call it in the asyncio executor. This is also appropriate becase
+            # we don't care about the response of the callback. We just wanna send data.
+
+            # Also, they might be expecting a return code. We can't obtain it, so assume 0. 
+            if(isinstance(self._callback, Coroutine)):
+                asyncio.get_event_loop().create_task(self._callback(0)) # We use create_task so we don't block here.
+            else:
+                asyncio.get_event_loop().run_in_executor(None, self._callback, 0) # Again, don't block here.
     
-    def abort(self, wait=False, true_abort=False):
+    async def abort(self, wait=False, true_abort=False):
         if(true_abort == True): #Don't kill the process unless explicitly stated.
             if(self._procview != None) and (self._procview.is_alive == True):
                 self.notes.add("A termination signal was sent to the process.", note_taker="hddmond")
                 self._procview.terminate()
         else:
-            self.detach()
-        
-        if wait == True:
-            print("\tWaiting for {0} to stop...".format(self._pollingThread.name))
-            try:
-                self._pollingThread.join()
-            except RuntimeError:
-                pass
+            if wait == True:
+                await self.detach()
+            else:
+                asyncio.get_event_loop().create_task(self.detach())
 
-    def detach(self):
+    async def detach(self):
         '''
         Should be used only when quitting the hddmon-daemon program
         '''
         self._poll = False
-        try:
-            self._pollingThread.join()
-        except RuntimeError:
-            pass
+        while not self._pollingTask.done():
+            await asyncio.sleep(0)
         self.notes.add("The process was detatched from the hddmond monitor.", note_taker="hddmond")
 
     
@@ -449,7 +474,7 @@ class EraseTask(Task):
         self._started = False
         self._returncode = None
         self._pollingInterval = pollingInterval
-        self._pollingThread = threading.Thread(target=self._monitorProgress, name=str(self.node) + "_eraseTask")
+        self._pollingTask = None #threading.Thread(target=self._monitorProgress, name=str(self.node) + "_eraseTask")
         self._subproc = None
         self._PID = None
         self._procview = None
@@ -486,28 +511,25 @@ class EraseTask(Task):
     def start(self, progress_callback=None):
         self.time_started = datetime.datetime.now(datetime.timezone.utc)
         self._progress_cb = progress_callback
-        self._subproc = subprocess.Popen(['scrub', '-f', '-p', 'fillff', self.node], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        self._subproc = asyncio.create_subprocess_exec('scrub', '-f', '-p', 'fillff', self.node, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self._PID = self._subproc.pid
         self._procview = proc.core.Process.from_pid(self._PID)
-        self._pollingThread.start()
+        self._pollingTask = asyncio.get_event_loop().create_task(self._monitorProgress(), name="erase_task_poll")
         self._progressString = "Erasing" + (" " + str(self.Progress) + "%" if self.Capacity != 0 else '') 
         self.notes.add("Erasing was started on this storage device.", note_taker="hddmond")
 
-
-    def abort(self, wait=False):
+    async def abort(self, wait=False):
         if(self._subproc):
             if(self.Finished == False):
                 self.notes.add("Erase task aborted at " + str(self.Progress) + "%.", note_taker="hddmond")
             self._subproc.terminate()
         if wait == True:
-            print("\tWaiting for {0} to stop...".format(self._pollingThread.name))
-            try:
-                self._pollingThread.join()
-            except RuntimeError:
-                pass
+            print("\tWaiting for {0} to stop...".format(self._pollingTask.name))
+            while not self._pollingTask.done():
+                await asyncio.sleep(0)
 
 
-    def _monitorProgress(self):
+    async def _monitorProgress(self):
 
         if(self.Capacity > 0):
             self._progress = int(self._procview.io['write_bytes'] / self._cap_in_bytes)
@@ -522,7 +544,7 @@ class EraseTask(Task):
         lastprogress = self._progress
         while self._monitor and (self._returncode == None):
             
-            self._returncode = self._subproc.poll()
+            self._returncode = self._subproc.returncode
             if(self._returncode == None):
                 io = self._procview.io
                 if(self.Capacity > 0):
@@ -538,7 +560,7 @@ class EraseTask(Task):
                         self._progress_cb(self.Progress, self._progressString)
                     lastprogress = self._progress
         self.returncode = self._returncode
-        self.time_started = datetime.datetime.now(datetime.timezone.utc)
+        self.time_ended = datetime.datetime.now(datetime.timezone.utc)
         if(self._returncode == 0):
             self.notes.add("Full erase performed on storage device. Wrote 0xFF to all bits.", note_taker="hddmond")
         else:
@@ -548,6 +570,7 @@ class EraseTask(Task):
 
 TaskService.register(EraseTask.display_name, EraseTask)
 
+### ImageTask needs some serious TLC. Clonezilla isn't reliable for this task. TODO: Research Partclone for this task.
 class ImageTask(Task):
 
     display_name = "Image"
