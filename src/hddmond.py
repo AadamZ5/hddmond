@@ -13,18 +13,20 @@ import logging
 
 load_injection_container('./') #For the `injectable` module. Scans files for injectable items.
 
-
-from hddmontools.task import Task, EraseTask, ImageTask
 from hddmondtools.hddmanager import ListModel
 from hddmondtools.websocket import WebsocketServer
-from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData, ImageData
-from hddmondtools.couchdb import CouchDatabase
-from hddmontools.image import ImageManager, CustomerImage, DiskImage
+from hddmondtools.hddmon_dataclasses import ImageData
+from hddmontools.image import ImageManager
 from hddmontools.config_service import ConfigService
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 class App:
     def __init__(self):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.info("Initializing application...")
         self.images = inject(ImageManager)
         self.list = ListModel(taskChangedCallback = self.task_changed_cb)
     
@@ -32,6 +34,7 @@ class App:
         self.ws.connect_instance(self.list) #All API functions are defined in ListModel
 
     async def ws_update(self, payload):
+        self.logger.debug(f"Broadcasting data to websockets: {payload}")
         await self.ws.broadcast_data(payload)
         
     def image_shim(self, *args, **kw):
@@ -44,12 +47,13 @@ class App:
         return {'onboarded_images': imags, 'discovered_images': disc}
 
     async def start(self):
+        self.logger.info("Starting application...")
         await self.images.start()
         await self.ws.start()
         await self.list.start()
 
     async def stop(self, *args, **kwargs):
-        print("Stopping...")
+        self.logger.info("Stopping application...")
         await self.ws.stop()
         await self.list.stop()
         await self.images.stop()
@@ -61,14 +65,21 @@ class App:
 
 
 if __name__ == '__main__':
+    logger.info("Executing file...")
+    
+    console_logfeed = logging.StreamHandler()
+    general_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s", "%Y-%m-%d %H:%M:%S")
+    console_logfeed.setFormatter(general_formatter)
+    console_logfeed.setLevel(logging.DEBUG)
+
+    logger.addHandler(console_logfeed)
 
     cfg_svc = inject(ConfigService)
 
     verbose = False
-    def vprint(s: str):
-        if verbose == True:
-            print(s)
 
+    logger.debug("Using getopt, sys modules...")
+    #TODO: Use argparse instead!
     import getopt, sys
     unixOptions = "hvw:r:A:p:U:P:"
     gnuOptions = ["help", "verbose", "wsport=", "rhdport=", "dbaddress=", "dbport=", "dbuser=", "dbpassword="]
@@ -77,9 +88,10 @@ if __name__ == '__main__':
     arguments = None
     
     try:
+        logger.debug("Parsing options...")
         arguments, values = getopt.getopt(argumentList, unixOptions, gnuOptions)
     except getopt.error as err:
-        print (str(err))
+        logger.error(f"Error while parsing options: {str(err)}")
         sys.exit(2)
     if arguments != None:
         wsport = None
@@ -91,34 +103,36 @@ if __name__ == '__main__':
 
         for currentArgument, currentValue in arguments:
             if currentArgument in ("-v", "--verbose"):
-                print("Verbose")
+                logger.debug("Using verbose...")
                 verbose = True
             elif currentArgument in ("-h", "--help"):
+                logger.debug("Showing help...")
                 print("Let me help you,")
                 print("Launch this program with at least the -d, -a, and -p commands to specify a disk, address, and port to connect to.")
                 print("ex: , -a 127.0.0.1 -p 56567")
                 print("Valid options: ")
                 for op in gnuOptions:
                     print("--" + str(op))
+                logger.info("Exiting after showing help...")
                 exit(0)
             elif currentArgument in ("-w", "--wsport"):
                 wsport = str(currentValue).strip()
-                vprint("Websocket port overridden to " + str(wsport))
+                logger.debug("Websocket port overridden to " + str(wsport))
             elif currentArgument in ("-r", "--rhdport"):
                 rhdport = currentValue.strip()
-                vprint("Remote HDD port overridden to {0}".format(rhdport))
+                logger.debug("Remote HDD port overridden to {0}".format(rhdport))
             elif currentArgument in ("-A", "--dbaddress"):
                 dbaddress = currentValue.strip()
-                vprint("Database address overridden to {0}".format(dbaddress))
+                logger.debug("Database address overridden to {0}".format(dbaddress))
             elif currentArgument in ("-p", "--dbport"):
                 dbport = currentValue.strip()
-                vprint("Database port overridden to {0}".format(dbport))
+                logger.debug("Database port overridden to {0}".format(dbport))
             elif currentArgument in ("-U", "--dbuser"):
                 dbuser = currentValue.strip()
-                vprint(f"Database user overridden")
+                logger.debug(f"Database user overridden")
             elif currentArgument in ("-P", "--dbpassword"):
                 dbpass = currentValue.strip()
-                vprint(f"Database password overridden")
+                logger.debug(f"Database password overridden")
 
         if wsport != None:
             cfg_svc._data['websocket_host']['port'] = int(wsport)
@@ -133,18 +147,25 @@ if __name__ == '__main__':
         if dbpass != None:
             cfg_svc._data['couchdb']['password'] = str(dbpass)
 
+    if not verbose:
+        console_logfeed.setLevel(logging.INFO)
 
     app = App()
     
+    logger.debug("Getting asyncio event loop...")
     loop = asyncio.get_event_loop()
 
     async def async_stop():
+        logger.debug("Asking app to stop...")
         await app.stop()
 
     def async_is_over(*a, **kw):
+        logger.debug("Stopping event loop...")
         asyncio.get_event_loop().stop()
 
     def stop_shim():
+        logger.info("Got request to exit.")
+        logger.debug("Scheduling application exit...")
         exit_task = asyncio.get_event_loop().create_task(async_stop(), name="exit_task")
         exit_task.add_done_callback(async_is_over)
 
@@ -157,5 +178,5 @@ if __name__ == '__main__':
     loop.run_until_complete(app.start())
     loop.run_forever()
 
-    print("Done.")
+    logger.info("Done.")
     exit(0)

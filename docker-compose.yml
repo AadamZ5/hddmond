@@ -14,6 +14,7 @@ services:
         #     caddy: "hddmon.${HOST_NAME}.${DOMAIN_NAME}:8765"
         #     caddy.reverse_proxy: "{{upstreams 8765}}"
         restart: unless-stopped
+        command: "-v"
         volumes: 
             - "./src/config:/etc/hddmon/config"
         privileged: true
