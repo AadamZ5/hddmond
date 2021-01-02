@@ -42,15 +42,18 @@ class App:
         for i in self.images.discovered_images:
             disc.append(ImageData.FromDiskImage(i))
         return {'onboarded_images': imags, 'discovered_images': disc}
+
     async def start(self):
         await self.images.start()
         await self.ws.start()
         await self.list.start()
+
     async def stop(self, *args, **kwargs):
         print("Stopping...")
         await self.ws.stop()
         await self.list.stop()
         await self.images.stop()
+        
     def task_changed_cb(self, payload):
         loop = asyncio.get_event_loop()
         loop.create_task(self.ws_update(payload))
