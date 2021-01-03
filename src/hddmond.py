@@ -19,6 +19,8 @@ from hddmondtools.hddmon_dataclasses import ImageData
 from hddmontools.image import ImageManager
 from hddmontools.config_service import ConfigService
 
+root_logger = logging.getLogger()
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -34,7 +36,6 @@ class App:
         self.ws.connect_instance(self.list) #All API functions are defined in ListModel
 
     async def ws_update(self, payload):
-        self.logger.debug(f"Broadcasting data to websockets: {payload}")
         await self.ws.broadcast_data(payload)
         
     def image_shim(self, *args, **kw):
@@ -72,7 +73,7 @@ if __name__ == '__main__':
     console_logfeed.setFormatter(general_formatter)
     console_logfeed.setLevel(logging.DEBUG)
 
-    logger.addHandler(console_logfeed)
+    root_logger.addHandler(console_logfeed)
 
     cfg_svc = inject(ConfigService)
 

@@ -1,3 +1,5 @@
+import logging
+
 #from .task import Task
 from injectable import injectable, inject
 
@@ -13,10 +15,14 @@ class TaskService:
     _name_buffer = {}
 
     def __init__(self):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.info("Initializing TaskService...")
         self.task_types = TaskService._class_buffer
         self.display_names = TaskService._name_buffer
 
     def initialize(self):
+        self.logger.debug("Reinitializing TaskService...")
         for key in TaskService._class_buffer.keys():
             self.task_types[key] = TaskService._class_buffer[key]
         

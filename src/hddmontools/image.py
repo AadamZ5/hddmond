@@ -6,6 +6,7 @@ import pickle
 import secrets
 import datetime
 import subprocess
+import logging
 from injectable import injectable
 
 class Partition:
@@ -185,6 +186,8 @@ class ImageUpload:
 @injectable(singleton=True)
 class ImageManager:
     def __init__(self):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
         self._image_data_path = r'/etc/hddmon/images_data/images/'
         self._image_credentials = r'/etc/hddmon/images_data/users.conf'
         self.discovered_images = [] #List of DiskImage
@@ -199,7 +202,7 @@ class ImageManager:
     async def start(self):
         self._load_existing_images()
         for p in self._discover_locations:
-            print("Looking in {0}...".format(p))
+            self.logger.debug("Looking in {0}...".format(p))
             self.scan_for_images(p)
 
     def _put_on_server(self):
@@ -211,7 +214,7 @@ class ImageManager:
         directories = os.listdir(self._image_data_path)
         for name in directories:
             directory = os.path.join(self._image_data_path,name)
-            print("Loading image data from " + directory)
+            self.logger.debug("Loading image data from " + directory)
             datadat = os.path.join(directory, 'hddmond-data.dat')
             if(os.path.isdir(directory)) and (os.path.exists(datadat)):
                 try:
@@ -220,9 +223,9 @@ class ImageManager:
                         i = pickle.load(fd)
                         self.added_images.append(i)
                 except Exception as e:
-                    print("Error unpickling image at " + directory + ":\n" + str(e))
+                    self.logger.error("Error unpickling image at " + directory + ":\n" + str(e))
             else:
-                print("Couldn't load image! No pickle file found for {0}".format(directory))
+                self.logger.error("Couldn't load image! No pickle file found for {0}".format(directory))
 
     def scan_for_images(self, scan_folder):
         '''
@@ -233,13 +236,13 @@ class ImageManager:
         directories = os.listdir(scan_folder)
         for name in directories:
             directory = os.path.join(scan_folder,name)
-            print("Found " + directory)
+            self.logger.debug("Found " + directory)
             if(os.path.isdir(directory)):
                 try:
                     i = DiskImage(name, directory)
                     self.discovered_images.append(i)
                 except Exception as e:
-                    print("Error adding image at " + directory + ":\n" + str(e))
+                    self.logger.error("Error adding image at " + directory + ":\n" + str(e))
 
     def _save_image_data(self, c_img: CustomerImage):
         #TODO Do MD5 stuffs and save a data file to self._image_data_path
@@ -253,7 +256,7 @@ class ImageManager:
                 pickle.dump(c_img, fd)
                 self.added_images.append(c_img)
         except Exception as e:
-            print("Error pickling image at " + datadat + ":\n" + str(e))
+            self.logger.error("Error pickling image at " + datadat + ":\n" + str(e))
         pass
 
     def onboard_image(self, image_name: str, customer: str):

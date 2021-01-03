@@ -210,8 +210,14 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
         """
         Helper method to create the queue thread if none exists in the moment.
         """
-        loop = asyncio.get_event_loop()
-        self._queue_thread = loop.create_task(self._launch_new_task()) #This async task should exit soon after the start() function of the task exits. This async task is just to offload the sleep between tasks, and detach from the last finished thread.
+        if threading.current_thread() != threading.main_thread():
+            async def thread_shim():
+                nonlocal self
+                asyncio.get_event_loop().create_task(self._launch_new_task())
+            asyncio.run_coroutine_threadsafe(thread_shim())
+        else:
+            loop = asyncio.get_event_loop()
+            self._queue_thread = loop.create_task(self._launch_new_task()) #This async task should exit soon after the start() function of the task exits. This async task is just to offload the sleep between tasks, and detach from the last finished thread.
     
     async def _launch_new_task(self): 
 

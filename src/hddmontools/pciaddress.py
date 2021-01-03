@@ -32,21 +32,29 @@ class PciAddress():
         pci_seg_bus_devfun = addr.split(':')
 
         if(len(pci_seg_bus_devfun) >= 3):
-#ex          ['0000', '00', '01.0', ?, ?, ?... ]
-            seg = str(pci_seg_bus_devfun[0])
-            bus = str(pci_seg_bus_devfun[1])
-            devfun = pci_seg_bus_devfun[2].split('.') #The device and function numbers are split by a '.' instead of a ':'....
-            dev = str(devfun[0])
-            fun = str(devfun[1])
-            p = PciAddress(seg, bus, dev, fun)
+            try:
+                #ex          ['0000', '00', '01.0', ?, ?, ?... ]
+                seg = str(pci_seg_bus_devfun[0])
+                bus = str(pci_seg_bus_devfun[1])
+                devfun = pci_seg_bus_devfun[2].split('.') #The device and function numbers are split by a '.' instead of a ':'....
+                dev = str(devfun[0])
+                fun = str(devfun[1])
+                p = PciAddress(seg, bus, dev, fun)
+            except IndexError as e:
+                return None
 
         elif(len(pci_seg_bus_devfun) == 2):
-#ex          [00', '01.0']   
-            seg = "0000"  #assume segment to be 0   
-            bus = str(pci_seg_bus_devfun[0])          
-            devfun = pci_seg_bus_devfun[1].split('.') #The device and function numbers are split by a '.' instead of a ':'....
-            dev = str(devfun[0])
-            fun = str(devfun[1])
-            p = PciAddress(seg, bus, dev, fun)
+            try:
+                #ex          [00', '01.0']   
+                seg = "0000"  #assume segment to be 0   
+                bus = str(pci_seg_bus_devfun[0])          
+                devfun = pci_seg_bus_devfun[1].split('.') #The device and function numbers are split by a '.' instead of a ':'....
+                dev = str(devfun[0])
+                fun = str(devfun[1])
+                p = PciAddress(seg, bus, dev, fun)
+            except IndexError as e:
+                return None
+        else:
+            return None
         
         return p
