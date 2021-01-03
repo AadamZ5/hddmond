@@ -480,7 +480,7 @@ class ListModel:
             
     def addHdd(self, hdd: HddInterface):
         if(self.check_in_blacklist(hdd)):
-            hdd.disconnect()
+            asyncio.get_event_loop().create_task(hdd.disconnect())
             del hdd
             return False
 

@@ -1,75 +1,26 @@
 #!/usr/bin/python3.8
-from injectable import load_injection_container, Autowired, autowired, inject
 
 import sys
-import os
 import signal
 import asyncio
 import logging
 
-# PACKAGE_PARENT = '..'
-# SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__))))
-# sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, PACKAGE_PARENT)))
-
+from injectable import load_injection_container, inject
 load_injection_container('./') #For the `injectable` module. Scans files for injectable items.
 
-from hddmondtools.hddmanager import ListModel
-from hddmondtools.websocket import WebsocketServer
-from hddmondtools.hddmon_dataclasses import ImageData
-from hddmontools.image import ImageManager
+from hddmondtools.application import App
 from hddmontools.config_service import ConfigService
 
 root_logger = logging.getLogger()
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("Bootstrapper")
 logger.setLevel(logging.DEBUG)
-
-class App:
-    def __init__(self):
-        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
-        self.logger.setLevel(logging.DEBUG)
-        self.logger.info("Initializing application...")
-        self.images = inject(ImageManager)
-        self.list = ListModel(taskChangedCallback = self.task_changed_cb)
-    
-        self.ws = inject(WebsocketServer)
-        self.ws.connect_instance(self.list) #All API functions are defined in ListModel
-
-    async def ws_update(self, payload):
-        await self.ws.broadcast_data(payload)
-        
-    def image_shim(self, *args, **kw):
-        imags = []
-        for i in self.images.added_images:
-            imags.append(ImageData.FromDiskImage(i))
-        disc = []
-        for i in self.images.discovered_images:
-            disc.append(ImageData.FromDiskImage(i))
-        return {'onboarded_images': imags, 'discovered_images': disc}
-
-    async def start(self):
-        self.logger.info("Starting application...")
-        await self.images.start()
-        await self.ws.start()
-        await self.list.start()
-
-    async def stop(self, *args, **kwargs):
-        self.logger.info("Stopping application...")
-        await self.ws.stop()
-        await self.list.stop()
-        await self.images.stop()
-        
-    def task_changed_cb(self, payload):
-        loop = asyncio.get_event_loop()
-        loop.create_task(self.ws_update(payload))
-    
-
 
 if __name__ == '__main__':
     logger.info("Executing file...")
     
     console_logfeed = logging.StreamHandler()
     general_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s", "%Y-%m-%d %H:%M:%S")
+    verbose_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s in %(filename)s:%(lineno)d - %(message)s", "%Y-%m-%d %H:%M:%S")
     console_logfeed.setFormatter(general_formatter)
     console_logfeed.setLevel(logging.DEBUG)
 
@@ -105,6 +56,7 @@ if __name__ == '__main__':
         for currentArgument, currentValue in arguments:
             if currentArgument in ("-v", "--verbose"):
                 logger.debug("Using verbose...")
+                console_logfeed.setFormatter(verbose_formatter)
                 verbose = True
             elif currentArgument in ("-h", "--help"):
                 logger.debug("Showing help...")
