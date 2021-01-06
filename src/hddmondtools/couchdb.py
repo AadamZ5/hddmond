@@ -6,8 +6,12 @@ from hddmontools.config_service import ConfigService
 import datetime
 from injectable import injectable, injectable_factory, inject
 
+import logging
+
 class CouchDatabase(GenericDatabase):
     def __init__(self, address_with_port, user, passw):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
         self._u = user
         self._add = address_with_port
         self._p = passw
@@ -20,20 +24,22 @@ class CouchDatabase(GenericDatabase):
         self.couch = CouchDB(self._u, self._p, url=self._add, auto_renew=True)
         try:
             self.couch.connect()
+            self.logger.debug("Database connection established.")
         except Exception as e:
-            print("Couldn't connect to database.")
-            print(e)
+            self.logger.error(f"Couldn't connect to database. {str(e)}")
             return False
-        
+        self.logger.debug("Creating databases...")
         self.couch.create_database('hard-drives')
         self.hdddb = self.couch['hard-drives']
         self.couch.create_database('tasks')
         self.taskdb = self.couch['tasks']
         self.couch.create_database('smart-captures')
         self.smartdb = self.couch['smart-captures']
+        self.logger.debug("Databases created.")
         return True
 
     def disconnect(self):
+        self.logger.info("Disconnecting from database...")
         self.couch.disconnect()
 
     def update_hdd(self, hdd: HddData):
@@ -113,7 +119,7 @@ class CouchDatabase(GenericDatabase):
         try:
             task_doc = self.taskdb.create_document(task_data)
         except HTTPError:
-            print(f"There was an HTTP error while trying to save the {task.name} task from {serial}")
+            self.logger.error(f"There was an HTTP error while trying to save the {task.name} task from {serial}")
             return
         
         r_hdd = self.hdddb[serial]
@@ -155,7 +161,7 @@ class CouchDatabase(GenericDatabase):
         try:
             sc_doc = self.smartdb.create_document(s_data)
         except HTTPError:
-            print(f"There was an HTTP error while trying to save the smart capture from {hdd.serial}")
+            self.logger.error(f"There was an HTTP error while trying to save the smart capture from {hdd.serial}")
             return
 
         r_hdd = self.hdddb[hdd.serial]

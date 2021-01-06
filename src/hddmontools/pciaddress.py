@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PciAddress():
     def __init__(self, segment, bus, device, function):
@@ -24,7 +27,7 @@ class PciAddress():
 
     @staticmethod
     def ParseAddr(addr: str):
-
+        logger.debug(f"Trying to parse PCI address {addr}...")
         p = None
         
         addr = str(addr).strip()
@@ -32,21 +35,34 @@ class PciAddress():
         pci_seg_bus_devfun = addr.split(':')
 
         if(len(pci_seg_bus_devfun) >= 3):
-#ex          ['0000', '00', '01.0', ?, ?, ?... ]
-            seg = str(pci_seg_bus_devfun[0])
-            bus = str(pci_seg_bus_devfun[1])
-            devfun = pci_seg_bus_devfun[2].split('.') #The device and function numbers are split by a '.' instead of a ':'....
-            dev = str(devfun[0])
-            fun = str(devfun[1])
-            p = PciAddress(seg, bus, dev, fun)
+            try:
+                #ex          ['0000', '00', '01.0', ?, ?, ?... ]
+                seg = str(pci_seg_bus_devfun[0])
+                bus = str(pci_seg_bus_devfun[1])
+                devfun = pci_seg_bus_devfun[2].split('.') #The device and function numbers are split by a '.' instead of a ':'....
+                dev = str(devfun[0])
+                fun = str(devfun[1])
+                p = PciAddress(seg, bus, dev, fun)
+                logger.debug(f"Parsed address as {p}")
+            except IndexError as e:
+                logger.error(f"Couldn't parse address {addr} into a PCI address.")
+                return None
 
         elif(len(pci_seg_bus_devfun) == 2):
-#ex          [00', '01.0']   
-            seg = "0000"  #assume segment to be 0   
-            bus = str(pci_seg_bus_devfun[0])          
-            devfun = pci_seg_bus_devfun[1].split('.') #The device and function numbers are split by a '.' instead of a ':'....
-            dev = str(devfun[0])
-            fun = str(devfun[1])
-            p = PciAddress(seg, bus, dev, fun)
+            try:
+                #ex          [00', '01.0']   
+                seg = "0000"  #assume segment to be 0   
+                bus = str(pci_seg_bus_devfun[0])          
+                devfun = pci_seg_bus_devfun[1].split('.') #The device and function numbers are split by a '.' instead of a ':'....
+                dev = str(devfun[0])
+                fun = str(devfun[1])
+                p = PciAddress(seg, bus, dev, fun)
+                logger.debug(f"Parsed address as {p}")
+            except IndexError as e:
+                logger.error(f"Couldn't parse address {addr} into a PCI address.")
+                return None
+        else:
+            logger.error(f"Couldn't parse address {addr} into a PCI address.")
+            return None
         
         return p

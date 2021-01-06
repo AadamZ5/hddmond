@@ -1,19 +1,20 @@
-from __future__ import annotations
 import pyudev
 import pySMART
 import time
 import subprocess
 import datetime
 import enum
-from .task_service import TaskService
-from .pciaddress import PciAddress
-from .test import Test
-from .task import Task, TaskQueue, ExternalTask
-from .portdetection import PortDetection
-from .notes import Notes
-import proc.core
+import logging
+
 from injectable import inject
-from .hdd_interface import HddInterface, TaskQueueInterface
+from typing import Dict, Any
+
+from hddmontools.task_service import TaskService
+from hddmontools.test import Test
+from hddmontools.task import Task, TaskQueue, ExternalTask
+from hddmontools.portdetection import PortDetection
+from hddmontools.notes import Notes
+from hddmontools.hdd_interface import HddInterface, TaskQueueInterface
 from hddmondtools.hddmon_dataclasses import SmartData
 
 #
@@ -145,13 +146,18 @@ class Hdd(HddInterface):
         '''
         Create a hdd object from its symlink node '/dev/sd?'
         '''
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__ + f'[{node}]')
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.debug(f"Initializing new HDD from {node}")
         self._serial = '"HDD"'
         self._model = str()
         self._wwn = str()
         self._node = node
         self._name = str(node).replace('/dev/', '')
+        self.logger.debug("Getting UDEV device context...")
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), node)
         self._task_changed_callbacks = []
+        self.logger.debug("Getting SMART device context...")
         self._smart = pySMART.Device(self.node)
         self._port = None
         self._TaskQueue = TaskQueue(continue_on_error=False, task_change_callback=self._task_changed)
@@ -159,11 +165,13 @@ class Hdd(HddInterface):
         self._pci_address = None
         self._notes = Notes()
         self._seen = 0
-
+        self.logger.debug("Trying to get PCI and port...")
         port_detector = inject(PortDetection)
         port_detector.Update()
         self._pci_address = port_detector.GetPci(self._udev.sys_path)
+        self.logger.debug(f"Got PCI as {self._pci_address}.")
         self._port = port_detector.GetPort(self._udev.sys_path, self._pci_address, self.serial)
+        self.logger.debug(f"Got port as {self._port}.")
 
         try:
             sizeunit = self._smart.capacity.split()
@@ -177,9 +185,9 @@ class Hdd(HddInterface):
         except AttributeError:
             self._capacity = None
             pass
-        except Exception:
+        except Exception as e:
             self._capacity = None
-            print("Exception occurred while parsing capacity of drive " + self.serial + ". This drive may not function properly")
+            self.logger.error("Exception occurred while parsing capacity of drive " + self.serial + f". This drive may not function properly. {str(e)}")
 
         self._smart_last_call = time.time()
         self._medium = None #SSD or HDD
@@ -196,16 +204,20 @@ class Hdd(HddInterface):
             self._serial = "Unknown HDD"
             self._model = ""
             #Idk where we go from here
+        self.logger.debug(f"My serial is {self._serial}.")
+        n = 'n' if self._medium == "" else ''
+        med = self._medium if self._medium != "" else "unknown medium"
+        self.logger.debug(f"I am a{n} {med}.")
         
     @staticmethod
-    def FromSmartDevice(d: pySMART.Device) -> Hdd:
+    def FromSmartDevice(d: pySMART.Device):
         '''
         Create a HDD object from a pySMART Device object
         '''
         return Hdd("/dev/" + d.name)
 
     @staticmethod
-    def FromUdevDevice(d: pyudev.Device) -> Hdd: #pyudev.Device
+    def FromUdevDevice(d: pyudev.Device): #pyudev.Device
         '''
         Create a HDD object from a pyudev Device object
         '''
@@ -223,17 +235,19 @@ class Hdd(HddInterface):
         else:
             return False
 
-    def add_task(self, task_name, parameters, *a, **kw):
+    def add_task(self, task_name: str, parameters: Dict[str, Any], *a, **kw):
         task_svc = TaskService()
         task_obj = task_svc.task_types[task_name]
         parameter_schema = Task.GetTaskParameterSchema(task_obj)
         if(parameter_schema != None and len(parameters.keys()) <= 0):
             return {'need_parameters': parameter_schema, 'task': task_name}
         else:
-            t = task_obj(self, **parameters)
+            t: Task = task_obj(self, **parameters)
+            self.logger.debug(f"Sending task {t.name} to my task queue")
             self._TaskQueue.AddTask(t)
 
     def abort_task(self, *a, **kw):
+        self._TaskQueue.AbortCurrentTask(*a, **kw)
         pass
 
     def _task_changed(self, *args, **kw):
@@ -257,10 +271,10 @@ class Hdd(HddInterface):
         """
         if(self.TaskQueue.CurrentTask != None) and (self.TaskQueue.Error != True):
             if(isinstance(self.TaskQueue.CurrentTask, ExternalTask)) or (isinstance(self.TaskQueue.CurrentTask, Test)):
-                print("Detaching task " + str(self.TaskQueue.CurrentTask.name) + " on " + self.serial)
+                self.logger.info("Detaching task " + str(self.TaskQueue.CurrentTask.name) + " on " + self.serial)
                 await self.TaskQueue.CurrentTask.detach()
             else:
-                print("Aborting task " + str(self.TaskQueue.CurrentTask.name) + " (PID: " + str(self.TaskQueue.CurrentTask.PID) + ") on " + self.serial)
+                self.logger.info("Aborting task " + str(self.TaskQueue.CurrentTask.name) + " (PID: " + str(self.TaskQueue.CurrentTask.PID) + ") on " + self.serial)
                 await self.TaskQueue.CurrentTask.abort(wait=True) #Wait for abortion so database entries can be entered before we disconnect the database.
             
     def __str__(self):
@@ -276,7 +290,3 @@ class Hdd(HddInterface):
             t = "HDD"
         s = t + " " + str(self.serial) + " at " + str(self.node)
         return "<" + s + ">"
-
-from multiprocessing.managers import BaseManager
-class HddManager(BaseManager): pass
-HddManager.register('Hdd', Hdd)

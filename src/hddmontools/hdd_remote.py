@@ -1,6 +1,7 @@
 
 import asyncio
 import socket
+import logging
 
 from hddmontools.hdd_interface import HddInterface, TaskQueueInterface
 from hddmontools.hdd import Hdd
@@ -327,6 +328,9 @@ from injectable import injectable, inject
 @injectable(singleton=True)
 class HddRemoteRecieverServer:
     def __init__(self, udp_discovery_server_address=None):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.info("Initializing HddRemoteRecieverServer...")
         self._udp_address = udp_discovery_server_address
         if(self._udp_address != None):
             self.discovery_server = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM, proto=socket.IPPROTO_UDP)
@@ -374,10 +378,12 @@ class HddRemoteRecieverServer:
 
 
     def start(self):
+        self.logger.info("Starting HddRemoteRecieverServer...")
         self._loop_go = True
         self._tcp_thread.start()
 
     def stop(self):
+        self.logger.info("Stopping HddRemoteRecieverServer...")
         self._loop_go = False
         self._tcp_thread.join()
         self.server.shutdown(socket.SHUT_RDWR)
