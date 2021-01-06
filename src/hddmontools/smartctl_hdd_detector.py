@@ -4,20 +4,25 @@ from pySMART import DeviceList, Device
 import threading
 import time
 import asyncio
-
+import logging
 
 class SmartctlDetector(HddDetector):
 
     def __init__(self, poll_interval=2):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.info("Initializing SmartctlDetector...")
         self._callbacks = []
         self._dev_cache = []
         self._loopgo = True
         self._poll_interval = poll_interval
 
     async def start(self):
+        self.logger.info("Starting SmartctlDetector...")
         asyncio.get_event_loop().create_task(self._poll_method())
 
     async def stop(self):
+        self.logger.info("Stopping SmartctlDetector...")
         self._loopgo = False
 
     def _make_device_list(self):

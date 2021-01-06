@@ -2,6 +2,7 @@ import asyncio
 import threading
 import websockets
 import jsonpickle
+import logging
 
 from asyncio import AbstractEventLoop
 from injectable import inject, injectable
@@ -51,6 +52,11 @@ class WebsocketServer(ApiInterface):
     def __init__(self):
         super().__init__()
 
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
+
+        self.logger.debug("Initializing WebsocketServer...")
+
         # self.ssl_context = ssl._create_unverified_context(ssl.PROTOCOL_TLS_SERVER)
         # self.localhost_pem = pathlib.Path(__file__).with_name("localhost.pem")
         # self.ssl_context.load_cert_chain(self.localhost_pem)
@@ -78,7 +84,7 @@ class WebsocketServer(ApiInterface):
             try:
                 m = jsonpickle.loads(message)
             except Exception:
-                print("Error decoding message from " + str(ws.remote_address) + ". Message: " + str(message))
+                self.logger.error("Error decoding message from " + str(ws.remote_address) + ". Message: " + str(message))
                 send = jsonpickle.dumps({"error": "Couldn't parse JSON data!"}, unpicklable=False, make_refs=False)
                 await ws.send(send)
             else:
@@ -115,12 +121,14 @@ class WebsocketServer(ApiInterface):
             else:
                 await ws.send(data_list.pop(0))
 
-    async def handler(self, ws, path, *args, **kw):
+    async def handler(self, ws: WebSocketClientProtocol, path, *args, **kw):
+        self.logger.debug(f"New websocket client from {ws.remote_address}.")
         data_list = self.clientdata_multicast.register_client(ws.remote_address)
         c_task = asyncio.ensure_future(self.consumer_handler(ws, path, data_list, *args, **kw))
         p_task = asyncio.ensure_future(self.producer_handler(ws, path, data_list, *args, **kw))
         done, pending = await asyncio.wait([c_task, p_task,], return_when=asyncio.FIRST_COMPLETED)
         for task in pending: #This executes when the async call above finishes.
+            self.logger.debug(f"Websocket {ws.remote_address} disconnects.")
             task.cancel() #Cancel any remaining task. 
 
     async def broadcast_data(self, data, *a, **kw):
@@ -128,9 +136,11 @@ class WebsocketServer(ApiInterface):
         await self.clientdata_multicast.broadcast(data_s)
 
     async def start(self):
+        self.logger.info("Starting WebsocketServer...")
         self.ws = await websockets.serve(self.handler, "0.0.0.0", self.port)
 
     async def stop(self):
+        self.logger.info("Stopping WebsocketServer...")
         self.ws.close()
         await self.ws.wait_closed()
         #self.loop.call_soon_threadsafe(self.loop.stop) #https://stackoverflow.com/questions/46093238/python-asyncio-event-loop-does-not-seem-to-stop-when-stop-method-is-called?answertab=votes#tab-top

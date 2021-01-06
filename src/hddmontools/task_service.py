@@ -1,5 +1,11 @@
-#from .task import Task
-from injectable import injectable, inject
+import logging
+
+from typing import Dict, TypeVar
+from injectable import injectable
+
+#from hddmontools.task import Task
+
+T = TypeVar('T')
 
 @injectable(singleton=True)
 class TaskService:
@@ -9,14 +15,18 @@ class TaskService:
     recieve special treatment.
     """
 
-    _class_buffer = {}
-    _name_buffer = {}
+    _class_buffer: Dict[str, T]  = {}
+    _name_buffer: Dict[str, str] = {}
 
     def __init__(self):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.info("Initializing TaskService...")
         self.task_types = TaskService._class_buffer
         self.display_names = TaskService._name_buffer
 
     def initialize(self):
+        self.logger.debug("Reinitializing TaskService...")
         for key in TaskService._class_buffer.keys():
             self.task_types[key] = TaskService._class_buffer[key]
         
@@ -24,7 +34,7 @@ class TaskService:
             self.display_names[key] = TaskService._name_buffer[key]
 
     @staticmethod
-    def register(display_name: str, task_class):
+    def register(display_name: str, task_class: T):
         TaskService._class_buffer[task_class.__name__] = task_class
         TaskService._name_buffer[display_name] = task_class.__name__
 

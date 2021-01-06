@@ -2,6 +2,7 @@ from injectable import injectable
 from pathlib import Path
 import json
 import os
+import logging
 
 @injectable(singleton=True)
 class ConfigService:
@@ -11,6 +12,8 @@ class ConfigService:
         return self._data
 
     def __init__(self):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
         self._data = {
             'couchdb': {
                 'address': None,
@@ -25,18 +28,15 @@ class ConfigService:
                 'port': 56567
             }
         }
-        self._path = Path(__file__).parent / '../config/config.json'
+        self._path = (Path(__file__).parent / '../config/config.json').resolve()
 
         try:
             with self._path.open() as fd:
                 self._data = json.load(fd)
         except FileNotFoundError:
-            print(f"Warning! No config file exists at {self._path}!")
-            print("Be sure to specify configuration either environment variables or cmd line arguments!")
-            print("A config file should be used as a fallback!")
+            self.logger.warn(f"No config file exists at {self._path}! Be sure to specify configuration either environment variables or cmd line arguments! A config file should be used as a fallback!")
         except json.JSONDecodeError as e:
-            print(f"There was an error while parsing {self._path}!")
-            print(str(e))
+            self.logger.error(f"There was an error while parsing {self._path}! {str(e)}")
         
         self.override_env_var()
 
@@ -53,20 +53,20 @@ class ConfigService:
 
         if db_address != None:
             self._data['couchdb']['address'] = str(db_address)
-            print(f"Got ENV variable DB_ADDRESS={db_address}")
+            self.logger.debug(f"Got ENV variable DB_ADDRESS={db_address}")
         if db_port != None:
             self._data['couchdb']['port'] = int(db_port)
-            print(f"Got ENV variable DB_PORT={db_port}")
+            self.logger.debug(f"Got ENV variable DB_PORT={db_port}")
         if db_user != None:
             self._data['couchdb']['user'] = str(db_user)
-            print(f"Got ENV variable DB_USER (not displayed)")
+            self.logger.debug(f"Got ENV variable DB_USER (not displayed)")
         if db_passw != None:
             self._data['couchdb']['password'] = str(db_passw)
-            print(f"Got ENV variable DB_PASSWORD (not displayed)")
+            self.logger.debug(f"Got ENV variable DB_PASSWORD (not displayed)")
 
         if ws_port != None:
             self._data['websocket_host']['port'] = int(ws_port)
-            print(f"Got ENV variable WEBSOCKET_PORT={ws_port}")
+            self.logger.debug(f"Got ENV variable WEBSOCKET_PORT={ws_port}")
         if hddmon_port != None:
             self._data['hddmon_remote_host']['port'] = int(hddmon_port)
-            print(f"Got ENV variable HDDMON_PORT={hddmon_port}")
+            self.logger.debug(f"Got ENV variable HDDMON_PORT={hddmon_port}")

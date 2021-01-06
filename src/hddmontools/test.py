@@ -1,6 +1,4 @@
-import pySMART
 import threading
-import time
 import enum
 import datetime
 import asyncio

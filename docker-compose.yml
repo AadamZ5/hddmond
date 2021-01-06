@@ -3,7 +3,7 @@ version: "2"
 services:
     hddmond:
         container_name: hddmond_old
-        image: registry.repairpc.localdomain/hddmond:latest
+        image: hddmond:latest
         environment:
             - "WEBSOCKET_PORT=8765"
             - "HDDMON_PORT=56567"
@@ -14,6 +14,7 @@ services:
         #     caddy: "hddmon.${HOST_NAME}.${DOMAIN_NAME}:8765"
         #     caddy.reverse_proxy: "{{upstreams 8765}}"
         restart: unless-stopped
+        command: "-v"
         volumes: 
             - "./src/config:/etc/hddmon/config"
         privileged: true

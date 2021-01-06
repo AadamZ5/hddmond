@@ -1,13 +1,13 @@
-
 import random
 import string
 import datetime
 import time
 import socket
 import json
-import jsonpickle
 import pickle
 import threading
+import logging
+
 class MessageDispatcher:
     #TODO: Implement chunck sizing and resending upon error!
     @property
@@ -22,6 +22,9 @@ class MessageDispatcher:
         event_callback is for when data that doesn't need a response is sent (such as updates)
         It is called with kwargs `event` and `data`
         """
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__ + f'[{str(socket.getpeername())}]')
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.debug("Initializing new MessageDispatcher...")
         self.pending_messages = {} #Dict of {message_key: (sent_data, callback)}
         self.recieved_waiting = {} #Dict of {message_key: data_string}
         self._event_callback = event_callback
@@ -67,7 +70,7 @@ class MessageDispatcher:
             #Check if we've been pinging
             if self._ping_counter > 5:
                 #Sir, we have a problem.
-                print("Ping counter over 5")
+                self.logger.warn("Ping counter over 5")
                 self._loop_go = False
                 self._event_callback(event='lost_connection', data='The connection has been dropped')
                 return
@@ -77,7 +80,7 @@ class MessageDispatcher:
                 self._send_ping()
                 self._ping_counter += 1
                 self._last_ping = datetime.datetime.now()
-                print(f"{self._ping_counter} Sent ping...")
+                self.logger.debug(f"{self._ping_counter} Sent ping...")
 
             #Try and get a message
             in_bytes = bytearray()
@@ -85,7 +88,7 @@ class MessageDispatcher:
                 m_bytes = self._socket.recv(512) 
                 
                 if len(m_bytes) > 0:
-                    print(f"First data in! Bytes_len: {len(m_bytes)}")
+                    self.logger.debug(f"New message in, Bytes_len: {len(m_bytes)}")
                     #We got some data. Prepare to recieve more.
                     self._last_msg_recieved_at = datetime.datetime.now()
 
@@ -98,15 +101,15 @@ class MessageDispatcher:
                             m_bytes = bytes([])
 
                         if(len(m_bytes) > 0):
-                            print(f"More data! Bytes_len: {len(m_bytes)}")
+                            self.logger.debug(f"More data, Bytes_len: {len(m_bytes)}")
                             in_bytes.extend(m_bytes)
                         else:
-                            print("No new bytes in")
-                    print(f"Done recieving. Got {len(in_bytes)} bytes.")
+                            self.logger.debug("No new bytes in")
+                    self.logger.debug(f"Done recieving. Got {len(in_bytes)} bytes.")
                 else:
                     time.sleep(0.001)#Is this efficient?
             except socket.timeout:
-                print("Socket timeout")
+                self.logger.info("Socket timeout")
                 pass
             except socket.error:
                 #print("Socket error")
@@ -118,16 +121,13 @@ class MessageDispatcher:
                 try:
                     m = pickle.loads(in_bytes)
                 except json.decoder.JSONDecodeError as e:
-                    print(f"Had an error while decoding JSON from socket in messenger!\n\t{str(e)}")
-                    print(str(m_bytes))
-                    
-                    pass
+                    self.logger.error(f"Had an error while decoding JSON from socket in messenger!\n\t{str(e)}")
                 except EOFError:
-                    print("Ran out of input while trying to decode data!")
+                    self.logger.error("Ran out of input while trying to decode data!")
                 except pickle.UnpicklingError:
-                    print("Couldn't unpickle truncated data!")
+                    self.logger.error("Couldn't unpickle truncated data!")
                 except KeyError:
-                    print("Random key error while unpickling!")
+                    self.logger.error("Random key error while unpickling!")
                 else:
                     self._last_msg_recieved_at = datetime.datetime.now()
                     data = m.get('data', None)#Data is user specified data, not our special attribute metadata
@@ -141,9 +141,9 @@ class MessageDispatcher:
                                 self.recieved_waiting[key] = data
                                 del self.pending_messages[key]
                         else:
-                            print(f"Got a new message with key {key}.")
+                            self.logger.debug(f"Got a new message with key {key}.")
                             ret_data = self._process_msg(key=key, data=data)
-                            print(f"Returning data {str(ret_data)}")
+                            self.logger.debug(f"Returning data {str(ret_data)}")
                             ret_data_pickle = pickle.dumps(ret_data)
                             self._send_all_bytes(ret_data_pickle)
                     elif "event" in m: #Events do not need responded to
@@ -157,7 +157,7 @@ class MessageDispatcher:
                         self._send_pong()
             finally:
                 self._socket.setblocking(False)
-        print("Messenger {0} exited.".format(str(self._socket)))
+        self.logger.info("Messenger {0} exited.".format(str(self._socket)))
 
 
     def _process_msg(self, key, data):
@@ -169,15 +169,15 @@ class MessageDispatcher:
         return {"message_key": key, "data": ret_data}
 
     def _send_all_bytes(self, data: bytes):
-        #print(f"Sending data: {str(data)}")
+        self.logger.debug(f"Sending data: {str(data)}...")
         length = len(data)
         sent = 0
-        #print(f"Sent {sent}/{length}")
+        #self.logger.debug(f"Sent {sent}/{length}")
         try:
             while sent < length:
                 sent += self._socket.send(data[sent:])
-                #print(f"Sent {sent}/{length}")
-            #print("Done")
+                #self.logger.debug(f"Sent {sent}/{length}")
+            self.logger.debug("Sent.")
             return True
         except socket.error:
             self._loop_go = False
@@ -251,7 +251,7 @@ class MessageDispatcher:
             else:
                 if timeout_ms != None:
                     if (datetime.datetime.now() - time_start) > timeout:
-                        print("Timeout while waiting for message {0} ({1})".format(key, message))
+                        self.logger.debug("Timeout while waiting for message {0} ({1})".format(key, message))
                         return None
                 if (datetime.datetime.now() - last_retry) > retry_interval:
                     self.retry_send(key)

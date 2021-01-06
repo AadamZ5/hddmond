@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import subprocess
+import logging
 
 from injectable import injectable, inject
 from hddmontools.pciaddress import PciAddress
@@ -10,23 +11,25 @@ from hddmontools.sasdetection import SasDetective
 @injectable(singleton=True)
 class PortDetection():
     def __init__(self):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
         self.ahcidet = inject(AhciDetective)
         self.sasdet = inject(SasDetective)
+        self.logger.debug("Initializing PortDetection...")
 
         lspci = subprocess.run(['lspci'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         lines = str(lspci.stdout).splitlines()
-
         pcisToParse = []
-
         for line in lines:
             if "PCI bridge" in line:
                 pcisToParse.append(line.split()[0])
-        
         self.blacklistPcis = []
         for p in pcisToParse:
+            self.logger.debug(f"Found PCI bridge {p}...")
             self.blacklistPcis.append(PciAddress.ParseAddr(p))
 
     def Update(self):
+        self.logger.debug("Updating port detectives...")
         self.ahcidet.Update()
         self.sasdet.Update()
         
@@ -40,6 +43,7 @@ class PortDetection():
         return pci
 
     def GetPort(self, syspath, pci, serial):
+        self.logger.debug(f"Trying to find a port for {serial}...")
         p = self.ahcidet.GetPortFromSysPath(syspath)
         if p != None:
             #print("Setting port to " + str(p))
@@ -49,7 +53,7 @@ class PortDetection():
         if p != None:
             #print("Setting port to sas" + str(p))
             return "sas" + str(p)
-
+        self.logger.warn(f"Couldn't find the port for {serial}!")
         return None
 
 if __name__ == "__main__":
