@@ -2,6 +2,7 @@ import subprocess
 import logging
 
 from injectable import injectable
+from pathlib import Path
 
 from hddmontools.pciaddress import PciAddress
 
@@ -166,7 +167,7 @@ class SasDevice:
 
 @injectable(singleton=True)
 class SasDetective:
-    sas2ircu = r'/etc/hddmon/sas2ircu/sas2ircu_linux_x86_rel/sas2ircu'
+    sas2ircu = str((Path(__file__).parent / '../sas2ircu' / 'sas2ircu_linux_x86_rel' / 'sas2ircu').resolve())
 
     def __init__(self):
         self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)

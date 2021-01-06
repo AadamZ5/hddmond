@@ -22,7 +22,7 @@ if __name__ == '__main__':
     slim_formatter = logging.Formatter("%(asctime)s [%(levelname)s] - %(message)s", "%Y-%m-%d %H:%M:%S")
     general_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s", "%Y-%m-%d %H:%M:%S")
     verbose_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s in %(filename)s:%(lineno)d - %(message)s", "%Y-%m-%d %H:%M:%S")
-    console_logfeed.setFormatter(slim_formatter)
+    console_logfeed.setFormatter(general_formatter)
     console_logfeed.setLevel(logging.INFO)
 
     root_logger.addHandler(console_logfeed)

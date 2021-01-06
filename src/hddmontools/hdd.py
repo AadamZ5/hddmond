@@ -148,7 +148,7 @@ class Hdd(HddInterface):
         '''
         self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__ + f'[{node}]')
         self.logger.setLevel(logging.DEBUG)
-        self.logger.info(f"Initializing new HDD from {node}")
+        self.logger.debug(f"Initializing new HDD from {node}")
         self._serial = '"HDD"'
         self._model = str()
         self._wwn = str()
@@ -206,7 +206,7 @@ class Hdd(HddInterface):
             #Idk where we go from here
         self.logger.debug(f"My serial is {self._serial}.")
         n = 'n' if self._medium == "" else ''
-        med = self._medium if self._medium is not "" else "unknown medium"
+        med = self._medium if self._medium != "" else "unknown medium"
         self.logger.debug(f"I am a{n} {med}.")
         
     @staticmethod
