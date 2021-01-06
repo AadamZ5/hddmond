@@ -20,7 +20,7 @@ Order of configuration load:
 
 #### Config file
 
-The config directory exists inside the container at `/etc/hddmon/config`. This directory should be mounted to, with a config file existing in your system directory. See `src/config/config.json.example` for an example configuration file.
+The config directory exists inside the container at `/etc/hddmon/config`. This directory should be mounted to, with a config file existing in your system directory. See `src/config/config.json.example` for an example configuration file. Additionally, VSCode and some other editors should make use of the `$schema` key to help you auto-complete the config file.
 
 #### ENV variables
 
