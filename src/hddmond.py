@@ -10,6 +10,7 @@ import datetime
 from injectable import load_injection_container, inject
 load_injection_container('./') #For the `injectable` module. Scans files for injectable items.
 from pathlib import Path
+from os import makedirs
 
 from hddmondtools.application import App
 from hddmontools.config_service import ConfigService
@@ -20,9 +21,10 @@ logger.setLevel(logging.DEBUG)
 
 if __name__ == '__main__':
     logger.info("Executing file...")
-    
+    log_path = Path('logs').resolve()
     console_logfeed = logging.StreamHandler()
-    file_logfeed = logging.handlers.RotatingFileHandler(str(Path(str(datetime.datetime.now().isoformat()) + '.log').resolve()), backupCount=5, maxBytes=500000000, delay=True)
+    makedirs(log_path, 0x755, True)
+    file_logfeed = logging.handlers.RotatingFileHandler(str(log_path / (str(datetime.datetime.now().isoformat(sep="_", timespec='seconds')) + '.log')), backupCount=5, maxBytes=500000000, delay=True)
     slim_formatter = logging.Formatter("%(asctime)s [%(levelname)s] - %(message)s", "%Y-%m-%d %H:%M:%S")
     general_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s", "%Y-%m-%d %H:%M:%S")
     verbose_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s in %(filename)s:%(lineno)d - %(message)s", "%Y-%m-%d %H:%M:%S")
