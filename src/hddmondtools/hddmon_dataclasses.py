@@ -173,7 +173,7 @@ class HddData(Interface):
         try:
             return HddData(hdd.serial, hdd.model, hdd.wwn, hdd.capacity, None, str(hdd.smart_data.assessment), TaskQueueData.FromTaskQueue(hdd.TaskQueue), hdd.node, str(hdd.port), hdd.smart_data, notes, hdd.seen, hdd.locality, hdd.get_available_tasks())
         except Exception as e:
-            print("Error while parsing HDD {0} {1}".format(hdd.serial, hdd.node))
+            ("Error while parsing HDD {0} {1}".format(hdd.serial, hdd.node))
             print(str(e))
             return None
 

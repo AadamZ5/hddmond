@@ -6,7 +6,6 @@ import proc
 from proc.tree import get_process_tree
 import threading
 import time
-from pySMART import Device
 from .image import DiskImage, Partition
 from .notes import Notes
 from .image import ImageManager

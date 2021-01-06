@@ -1,9 +1,15 @@
 import subprocess
-from hddmontools.pciaddress import PciAddress
+import logging
+
 from injectable import injectable
+
+from hddmontools.pciaddress import PciAddress
 
 class SasDevice:
     def __init__(self, index=None):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__ + f'[{index}]')
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.info(f"Registering SAS device with index {index}...")
         self.Index = int(index)
         self.PciAddress = None
         self.Devices = {} #{Serial *str: slot *int}
@@ -51,15 +57,18 @@ class SasDevice:
             function = data[13].split(':')[1].strip().zfill(1)
 
             self.PciAddress = PciAddress(segment, bus, device, function)
+            self.logger.debug(f"Registered with PCI address {self.PciAddress}.")
             #print(self.PciAddress)
-
+        else:
+            self.logger.error(f"Got non-zero exit code {displayInfo.returncode} from sas2ircu!")
         self.GetDevices()
-        #print(self.Devices)
+        self.logger.debug(f"Found {len(self.Devices)} devices attached to this device.")
     
     def GetPortFromSerial(self, serial:str):
         return self.Devices.get(serial, None)
 
     def GetDevices(self):
+        self.logger.debug("Looking for attached devices...")
         displayInfo = subprocess.run([SasDetective.sas2ircu, str(self.Index), 'DISPLAY'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
         #Example output:
@@ -150,6 +159,7 @@ class SasDevice:
                     serial = str(data[i+8].split(':')[1].strip())
                     slot = int(str(data[i+2].split(':')[1].strip()))
                     self.Devices.update({serial: slot})
+                    self.logger.debug(f"Found device {serial} on slot {slot}")
                     i += 10 #advance to the next block of data
         else:
             pass #Do something else?
@@ -159,8 +169,11 @@ class SasDetective:
     sas2ircu = r'/etc/hddmon/sas2ircu/sas2ircu_linux_x86_rel/sas2ircu'
 
     def __init__(self):
+        self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.info("Initializing SasDetective...")
         listSas = subprocess.run([SasDetective.sas2ircu, 'LIST'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-
+        
         self.SasDevices = []
         
         if(listSas.returncode == 0):
@@ -187,14 +200,16 @@ class SasDetective:
 
                         device = SasDevice(index=int(cols[0])) #SasDevice will remove the h from the PCI address
                         self.SasDevices.append(device)
+                        self.logger.debug(f"Found SAS device with index {device.Index}.")
                     else:
                         pass #The line was just informational text, not data we needed
         else:
+            self.logger.error(f"Got non-zero exit code {listSas.returncode} from sas2ircu while trying to list SAS controllers!")
             pass #Incorperate error handling?
 
     def GetDevicePort(self, pci, serial):
-
         if(pci != None):
+            self.logger.debug(f"Looking for port for {serial} using PCI address {pci} as a hint...")
             #print("Got PCI: " + str(pci))
             #First find the device with the same leading PCI address
             for sas in self.SasDevices:
@@ -204,21 +219,24 @@ class SasDetective:
                     return sas.GetPortFromSerial(serial) #We found a SAS device with that PCI address. Let it try and find the device
             
             #The loop finished and we didn't find anything at that PCI address
+            self.logger.debug(f"No SAS port found for {serial} on PCI address {pci}.")
             return None
         
         #If the PCI address isn't given, More resource intensive.
         elif(serial != None):
-            #print("Looking for drive " + serial + " in all SAS cards")
+            self.logger.debug("Looking for drive " + serial + " in all SAS cards...")
             for sas in self.SasDevices:
                 d = sas.GetPortFromSerial(serial)
                 if(d != None):
                     return d #We found a device
 
             #The loop finished and we didn't find anything
+            self.logger.debug(f"No SAS port found for {serial}")
             return None
         else:
             return None #What do you want us to do if you didn't give us anything?
                 
     def Update(self):
+        self.logger.debug("Updating all SAS device listings...")
         for sasdevice in self.SasDevices:
             sasdevice.GetDevices()

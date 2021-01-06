@@ -24,19 +24,22 @@ class CouchDatabase(GenericDatabase):
         self.couch = CouchDB(self._u, self._p, url=self._add, auto_renew=True)
         try:
             self.couch.connect()
+            self.logger.debug("Database connection established.")
         except Exception as e:
             self.logger.error(f"Couldn't connect to database. {str(e)}")
             return False
-        
+        self.logger.debug("Creating databases...")
         self.couch.create_database('hard-drives')
         self.hdddb = self.couch['hard-drives']
         self.couch.create_database('tasks')
         self.taskdb = self.couch['tasks']
         self.couch.create_database('smart-captures')
         self.smartdb = self.couch['smart-captures']
+        self.logger.debug("Databases created.")
         return True
 
     def disconnect(self):
+        self.logger.info("Disconnecting from database...")
         self.couch.disconnect()
 
     def update_hdd(self, hdd: HddData):

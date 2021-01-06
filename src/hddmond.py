@@ -19,10 +19,11 @@ if __name__ == '__main__':
     logger.info("Executing file...")
     
     console_logfeed = logging.StreamHandler()
+    slim_formatter = logging.Formatter("%(asctime)s [%(levelname)s] - %(message)s", "%Y-%m-%d %H:%M:%S")
     general_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s", "%Y-%m-%d %H:%M:%S")
     verbose_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s in %(filename)s:%(lineno)d - %(message)s", "%Y-%m-%d %H:%M:%S")
-    console_logfeed.setFormatter(general_formatter)
-    console_logfeed.setLevel(logging.DEBUG)
+    console_logfeed.setFormatter(slim_formatter)
+    console_logfeed.setLevel(logging.INFO)
 
     root_logger.addHandler(console_logfeed)
 
@@ -57,6 +58,7 @@ if __name__ == '__main__':
             if currentArgument in ("-v", "--verbose"):
                 logger.debug("Using verbose...")
                 console_logfeed.setFormatter(verbose_formatter)
+                console_logfeed.setLevel(logging.DEBUG)
                 verbose = True
             elif currentArgument in ("-h", "--help"):
                 logger.debug("Showing help...")
@@ -99,9 +101,6 @@ if __name__ == '__main__':
             cfg_svc._data['couchdb']['user'] = str(dbuser)
         if dbpass != None:
             cfg_svc._data['couchdb']['password'] = str(dbpass)
-
-    if not verbose:
-        console_logfeed.setLevel(logging.INFO)
 
     app = App()
     

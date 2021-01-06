@@ -74,10 +74,10 @@ class ListModel:
     def remote_hdd_callback(self, action, device: HddInterface):
         if('add' in action):
             if device.serial in (h.serial for h in self.hdds):
-                print("Got a remote device that already exists locally. Rejecting...")
+                self.logger.info("Got a remote device that already exists locally. Rejecting...")
                 device.disconnect()
             else:
-                print("Incomming connection from remote device {0}".format(device.serial))
+                self.logger.info("Incomming connection from remote device {0}".format(device.serial))
                 self.addHdd(device)
         elif('remove' in action):
             self.removeHddStr(device.node)
@@ -456,7 +456,7 @@ class ListModel:
         """
         #This should be run at the beginning of the program, or only if the hdd array is cleared.
         #Check to see if this device path already exists in our application.
-        print(pySMART.DeviceList().devices)
+        self.logger.debug(pySMART.DeviceList().devices)
         for d in pySMART.DeviceList().devices:
             
             notFound = True
@@ -565,15 +565,15 @@ class ListModel:
         self.remote_hdd_server.stop()
 
     def signal_close(self, signalNumber, frame):
-        print("Got signal " + str(signalNumber) + ", quitting.")
+        self.logger.info("Got signal " + str(signalNumber) + ", quitting.")
         self.stop()
 
     def signal_hangup(self, signalNumber, frame):
-        print("Got signal " + str(signalNumber) + ", no action will be taken.")
+        self.logger.info("Got signal " + str(signalNumber) + ", no action will be taken.")
         pass
 
     def signal_info(self, signalNumber, frame):
-        print("Got signal " + str(signalNumber) + ", refreshing devices.")
+        self.logger.info("Got signal " + str(signalNumber) + ", refreshing devices.")
         self._loopgo = False
         self.stop()
         self.hdds.clear()

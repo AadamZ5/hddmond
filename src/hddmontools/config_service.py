@@ -28,7 +28,7 @@ class ConfigService:
                 'port': 56567
             }
         }
-        self._path = (Path(__file__).parent / '../config/config.json').absolute()
+        self._path = (Path(__file__).parent / '../config/config.json').resolve()
 
         try:
             with self._path.open() as fd:
