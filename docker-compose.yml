@@ -3,7 +3,7 @@ version: "2"
 services:
     hddmond:
         container_name: hddmond_old
-        image: registry.repairpc.localdomain/hddmond:latest
+        image: hddmond:latest
         environment:
             - "WEBSOCKET_PORT=8765"
             - "HDDMON_PORT=56567"

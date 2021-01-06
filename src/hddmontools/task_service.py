@@ -3,9 +3,9 @@ import logging
 from typing import Dict, TypeVar
 from injectable import injectable
 
-from hddmontools.task import Task
+#from hddmontools.task import Task
 
-T = TypeVar('T', bound=Task)
+T = TypeVar('T')
 
 @injectable(singleton=True)
 class TaskService:
@@ -34,7 +34,7 @@ class TaskService:
             self.display_names[key] = TaskService._name_buffer[key]
 
     @staticmethod
-    def register(display_name: str, task_class: Task):
+    def register(display_name: str, task_class: T):
         TaskService._class_buffer[task_class.__name__] = task_class
         TaskService._name_buffer[display_name] = task_class.__name__
 
