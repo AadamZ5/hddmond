@@ -24,7 +24,6 @@ from hddmondtools.hddmon_dataclasses import SmartData
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  
 #
 
-@strawberry.type
 class Hdd(ActiveHdd):
     """
     Class for storing data about HDDs

@@ -50,8 +50,11 @@ class TaskQueueInterface(ABC):
         """
         raise NotImplementedError
 
-@strawberry.type
+@strawberry.type(description="Represents data about a device that is currently connected to the application")
 class ActiveHdd(HddEntry):
+    """
+    Represents data about a device that is currently connected to the application
+    """
 
     @property
     @abstractmethod
@@ -61,16 +64,16 @@ class ActiveHdd(HddEntry):
         """
         raise NotImplementedError
 
-    serial: ID
-    model: str
-    wwn: Optional[str]
-    node: str
-    name: str
-    port: Optional[str]
-    capacity: float
-    medium: str
-    seen: int
-    locality: str
+    serial: ID = strawberry.field(description="The serial of the device")
+    model: str = strawberry.field(description="The model number for the device")
+    wwn: Optional[str] = strawberry.field(description="The world-wide-number of the device, if applicable")
+    node: str = strawberry.field(description="The system device node, local to the device's operating environment")
+    name: str = strawberry.field(description="The kernel name of the device, local to the device's operating environment")
+    port: Optional[str] = strawberry.field(description="The port the device is connected to, if found and if applicable, local to the device's operating environment")
+    capacity: float = strawberry.field(description="The capacity of the device in GiB")
+    medium: str = strawberry.field(description="The type of storage device, usually HDD or SSD")
+    seen: int = strawberry.field(description="The amount of times the device has been seen")
+    locality: str = strawberry.field(description="A string describing the operating environment that the device is located at")
 
     def __init__(self, serial: ID, model: str, wwn: Optional[str], capacity: float):
         super().__init__(serial, model, wwn, capacity)
