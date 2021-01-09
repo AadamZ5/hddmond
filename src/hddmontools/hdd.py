@@ -32,7 +32,7 @@ class Hdd(ActiveHdd):
     @property
     def TaskQueue(self) -> TaskQueueInterface:
         """
-        Returns the serial for the device
+        Returns the task queue for the device
         """
         return self._TaskQueue
 
