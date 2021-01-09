@@ -1,5 +1,27 @@
+from datetime import datetime
+from typing import List, Optional
+import strawberry
+from strawberry.scalars import ID
 from .hddmon_dataclasses import HddData, TaskData, AttributeData, ImageData
 from abc import ABC, abstractmethod
+
+@strawberry.interface
+class HddEntry(ABC):
+    serial: ID #probably string
+    model: str
+    wwn: Optional[str]
+    capacity: float
+    first_seen: datetime
+    last_seen: datetime
+    seen: int
+    decommissioned: bool
+    completed_tasks: List[str] #TODO: Change to proper strawberry Task type!
+    smart_captures: List[str] #TODO: Change to proper strawberry SmartCapture type!
+
+    def __init__(self, serial: ID, model: str, wwn: Optional[str], capacity: float):
+        pass
+
+
 
 class GenericDatabase(ABC):
     '''

@@ -6,7 +6,7 @@ import multiprocessing.connection as ipc
 import proc.core
 import pyudev
 from pySMART import Device
-from hddmontools.hdd import Hdd, HddInterface
+from hddmontools.hdd import Hdd, ActiveHdd
 from hddmontools.task_service import TaskService
 from hddmontools.task import ExternalTask, Task, ImageTask, EraseTask
 from hddmontools.test import Test
@@ -71,7 +71,7 @@ class ListModel:
             if( not self.database.connect()):
                 self.database = None
     
-    def remote_hdd_callback(self, action, device: HddInterface):
+    def remote_hdd_callback(self, action, device: ActiveHdd):
         if('add' in action):
             if device.serial in (h.serial for h in self.hdds):
                 self.logger.info("Got a remote device that already exists locally. Rejecting...")
@@ -115,7 +115,7 @@ class ListModel:
         if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
             self.task_change_outside_callback({'update': action, 'data': {'serial': hdd.serial, 'taskqueue': Tqd}})
 
-    def database_task_finished(self, hdd:HddInterface, task_queue_data: TaskQueueData):
+    def database_task_finished(self, hdd:ActiveHdd, task_queue_data: TaskQueueData):
         if self.database == None:
             return
 
@@ -478,7 +478,7 @@ class ListModel:
 
         self.logger.info("Finished adding existing devices")
             
-    def addHdd(self, hdd: HddInterface):
+    def addHdd(self, hdd: ActiveHdd):
         if(self.check_in_blacklist(hdd)):
             asyncio.get_event_loop().create_task(hdd.disconnect())
             del hdd

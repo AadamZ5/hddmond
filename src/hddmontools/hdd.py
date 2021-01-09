@@ -5,23 +5,27 @@ import subprocess
 import datetime
 import enum
 import logging
+import strawberry
 
 from injectable import inject
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Union
+
+from strawberry.scalars import ID
 
 from hddmontools.task_service import TaskService
 from hddmontools.test import Test
 from hddmontools.task import Task, TaskQueue, ExternalTask
 from hddmontools.portdetection import PortDetection
 from hddmontools.notes import Notes
-from hddmontools.hdd_interface import HddInterface, TaskQueueInterface
+from hddmontools.hdd_interface import ActiveHdd, TaskQueueInterface
 from hddmondtools.hddmon_dataclasses import SmartData
 
 #
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  
 #
 
-class Hdd(HddInterface):
+@strawberry.type
+class Hdd(ActiveHdd):
     """
     Class for storing data about HDDs
     """
@@ -33,80 +37,21 @@ class Hdd(HddInterface):
         """
         return self._TaskQueue
 
-    @property
-    def serial(self) -> str:
-        """
-        Returns the serial for the device
-        """
-        return self._serial
-
-    @property
-    def model(self) -> str:
-        """
-        Returns the model for the device
-        """
-        return self._model
-
-    @property
-    def wwn(self) -> str:
-        """
-        Returns the WWN that smartctl obtained for the device
-        """
-        return self._wwn
-
-    @property
-    def node(self) -> str:
-        """
-        Returns the node for the device ("/dev/sdX" for example)
-        """
-        return self._node
-
-    @property
-    def name(self) -> str:
-        """
-        Returns the kernel name for the device. ("sdX" for example)
-        """
-        return self._name
-
-    @property
-    def port(self):
-        """
-        Returns the port for the device, if applicable.
-        """
-        return self._port
-
-    @property
-    def capacity(self) -> float:
-        """
-        Returns the capacity in GiB for the device
-        """
-        return self._capacity
-
-    @property
-    def medium(self) -> str:
-        """
-        Returns the medium of the device. (SSD or HDD)
-        """
-        return self._medium
-
-    @property
-    def seen(self) -> int:
-        """
-        Returns how many times this drive has been seen
-        """
-        return self._seen
-
-    @seen.setter
-    def seen(self, value: int):
-        """
-        Sets how many times this drive has been seen
-        """
-        self._seen = value
+    serial: ID = strawberry.field(description="The serial of the device")
+    model: str = strawberry.field(description="The model number for the device")
+    wwn: Optional[str] = strawberry.field(description="The world-wide-number of the device, if applicable")
+    node: str = strawberry.field(description="The system device node, local to the device's operating environment")
+    name: str = strawberry.field(description="The kernel name of the device, local to the device's operating environment")
+    port: Optional[str] = strawberry.field(description="The port the device is connected to, if found and if applicable, local to the device's operating environment")
+    capacity: float = strawberry.field(description="The capacity of the device in GiB")
+    medium: str = strawberry.field(description="The type of storage device, usually HDD or SSD")
+    seen: int = strawberry.field(description="The amount of times the device has been seen")
+    locality: str = strawberry.field(description="A string describing the operating environment that the device is located at")
 
     @property
     def notes(self):
         """
-        Sets how many times this drive has been seen
+        The notes object
         """
         return self._notes
 
@@ -117,14 +62,6 @@ class Hdd(HddInterface):
         """
         self.update_smart()
         return SmartData.FromSmartDev(self._smart)
-        
-    @property
-    def locality(self) -> str:
-        """
-        Some string representing where the HDD exists. 
-        HDDs on the same machine as the server should report 'local'
-        """
-        return 'local'
 
     def __getstate__(self):
         # Copy the object's state from self.__dict__ which contains
@@ -149,29 +86,29 @@ class Hdd(HddInterface):
         self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__ + f'[{node}]')
         self.logger.setLevel(logging.DEBUG)
         self.logger.debug(f"Initializing new HDD from {node}")
-        self._serial = '"HDD"'
-        self._model = str()
-        self._wwn = str()
-        self._node = node
-        self._name = str(node).replace('/dev/', '')
+        self.serial = '"HDD"'
+        self.model = str()
+        self.wwn = str()
+        self.node = node
+        self.name = str(node).replace('/dev/', '')
         self.logger.debug("Getting UDEV device context...")
         self._udev = pyudev.Devices.from_device_file(pyudev.Context(), node)
         self._task_changed_callbacks = []
         self.logger.debug("Getting SMART device context...")
         self._smart = pySMART.Device(self.node)
-        self._port = None
+        self.port = None
         self._TaskQueue = TaskQueue(continue_on_error=False, task_change_callback=self._task_changed)
         self._size = self._smart.capacity
         self._pci_address = None
         self._notes = Notes()
-        self._seen = 0
+        self.seen = 0
         self.logger.debug("Trying to get PCI and port...")
         port_detector = inject(PortDetection)
         port_detector.Update()
         self._pci_address = port_detector.GetPci(self._udev.sys_path)
         self.logger.debug(f"Got PCI as {self._pci_address}.")
-        self._port = port_detector.GetPort(self._udev.sys_path, self._pci_address, self.serial)
-        self.logger.debug(f"Got port as {self._port}.")
+        self.port = port_detector.GetPort(self._udev.sys_path, self._pci_address, self.serial)
+        self.logger.debug(f"Got port as {self.port}.")
 
         try:
             sizeunit = self._smart.capacity.split()
@@ -181,32 +118,34 @@ class Hdd(HddInterface):
             if unit.lower() == 'tb':
                 size = size * 1000
 
-            self._capacity = size
+            self.capacity = size
         except AttributeError:
-            self._capacity = None
+            self.capacity = None
             pass
         except Exception as e:
-            self._capacity = None
+            self.capacity = None
             self.logger.error("Exception occurred while parsing capacity of drive " + self.serial + f". This drive may not function properly. {str(e)}")
 
+        super().__init__(self.serial, self.model, self.wwn, self.capacity)
+
         self._smart_last_call = time.time()
-        self._medium = None #SSD or HDD
+        self.medium = None #SSD or HDD
 
         #Check interface
         if(self._smart.interface != None):
-            self._serial = str(self._smart.serial).replace('-', '')
-            self._model = self._smart.model
+            self.serial = str(self._smart.serial).replace('-', '')
+            self.model = self._smart.model
             if(self._smart.is_ssd):
-                self._medium = "SSD"
+                self.medium = "SSD"
             else:
-                self._medium = "HDD"
+                self.medium = "HDD"
         else:
-            self._serial = "Unknown HDD"
-            self._model = ""
+            self.serial = "Unknown HDD"
+            self.model = ""
             #Idk where we go from here
-        self.logger.debug(f"My serial is {self._serial}.")
-        n = 'n' if self._medium == "" else ''
-        med = self._medium if self._medium != "" else "unknown medium"
+        self.logger.debug(f"My serial is {self.serial}.")
+        n = 'n' if self.medium == "" else ''
+        med = self.medium if self.medium != "" else "unknown medium"
         self.logger.debug(f"I am a{n} {med}.")
         
     @staticmethod
@@ -221,7 +160,7 @@ class Hdd(HddInterface):
         '''
         Create a HDD object from a pyudev Device object
         '''
-        h = Hdd(d.device_node)
+        h = Hdd(d.devicenode)
         h._udev = d
         return h
 
@@ -235,12 +174,12 @@ class Hdd(HddInterface):
         else:
             return False
 
-    def add_task(self, task_name: str, parameters: Dict[str, Any], *a, **kw):
+    def add_task(self, taskname: str, parameters: Dict[str, Any], *a, **kw):
         task_svc = TaskService()
-        task_obj = task_svc.task_types[task_name]
+        task_obj = task_svc.task_types[taskname]
         parameter_schema = Task.GetTaskParameterSchema(task_obj)
         if(parameter_schema != None and len(parameters.keys()) <= 0):
-            return {'need_parameters': parameter_schema, 'task': task_name}
+            return {'need_parameters': parameter_schema, 'task': taskname}
         else:
             t: Task = task_obj(self, **parameters)
             self.logger.debug(f"Sending task {t.name} to my task queue")
@@ -263,7 +202,7 @@ class Hdd(HddInterface):
 
     def get_available_tasks(self):
         task_svc = TaskService()
-        return task_svc.display_names.copy()
+        return task_svc.displaynames.copy()
 
     async def disconnect(self):
         """

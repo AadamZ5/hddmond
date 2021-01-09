@@ -1,4 +1,11 @@
+import strawberry
+
+from typing import Union, Optional
 from abc import ABC, abstractmethod
+
+from strawberry.scalars import ID
+
+from hddmondtools.databaseinterface import HddEntry
 from hddmondtools.hddmon_dataclasses import SmartData
 
 class TaskQueueInterface(ABC):
@@ -43,7 +50,8 @@ class TaskQueueInterface(ABC):
         """
         raise NotImplementedError
 
-class HddInterface(ABC):
+@strawberry.type
+class ActiveHdd(HddEntry):
 
     @property
     @abstractmethod
@@ -53,85 +61,19 @@ class HddInterface(ABC):
         """
         raise NotImplementedError
 
-    @property
-    @abstractmethod
-    def serial(self) -> str:
-        """
-        Returns the serial for the device
-        """
-        raise NotImplementedError
+    serial: ID
+    model: str
+    wwn: Optional[str]
+    node: str
+    name: str
+    port: Optional[str]
+    capacity: float
+    medium: str
+    seen: int
+    locality: str
 
-    @property
-    @abstractmethod
-    def model(self) -> str:
-        """
-        Returns the model for the device
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def wwn(self) -> str:
-        """
-        Returns the WWN that smartctl obtained for the device
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def node(self) -> str:
-        """
-        Returns the node for the device ("/dev/sdX" for example)
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """
-        Returns the kernel name for the device. ("sdX" for example)
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def port(self):
-        """
-        Returns the port for the device, if applicable.
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def capacity(self) -> float:
-        """
-        Returns the capacity in GiB for the device
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def medium(self) -> str:
-        """
-        Returns the medium of the device. (SSD or HDD)
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def seen(self) -> int:
-        """
-        Returns how many times this drive has been seen
-        """
-        raise NotImplementedError
-    
-    @seen.setter
-    @abstractmethod
-    def seen(self, value: int):
-        """
-        Sets how many times this drive has been seen
-        """
-        raise NotImplementedError
+    def __init__(self, serial: ID, model: str, wwn: Optional[str], capacity: float):
+        super().__init__(serial, model, wwn, capacity)
 
     @property
     @abstractmethod
@@ -146,15 +88,6 @@ class HddInterface(ABC):
     def smart_data(self) -> SmartData:
         """
         The smart_data object
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def locality(self) -> str:
-        """
-        Some string representing where the HDD exists. 
-        HDDs on the same machine as the server should report 'local'
         """
         raise NotImplementedError
 
@@ -199,3 +132,4 @@ class HddInterface(ABC):
         Gets the tasks that are available to start on this device. Should return a dictionary of display_name: class_name
         """
         raise NotImplementedError
+

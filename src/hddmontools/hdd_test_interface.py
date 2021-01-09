@@ -1,22 +1,43 @@
-from hddmontools.hdd_interface import HddInterface
+import strawberry
+import datetime
+
+from typing import Optional
+from strawberry.scalars import ID
+
+from hddmontools.hdd_interface import ActiveHdd
 from hddmontools.task import TaskQueue, TaskService, Task
 from hddmontools.notes import Notes
 from hddmondtools.hddmon_dataclasses import SmartData
 
-import datetime
+@strawberry.type
+class HddTestInterface(ActiveHdd):
 
-class HddTestInterface(HddInterface):
+    serial: ID
+    model: str
+    wwn: Optional[str]
+    node: str
+    name: str
+    port: Optional[str]
+    capacity: float
+    medium: str
+    seen: int
+    locality: str
+
+    @strawberry.field
+    def last_seen(self) -> datetime.datetime:
+        return datetime.datetime.now()
+
     def __init__(self, mock_smart: SmartData = SmartData(str(datetime.datetime.now(datetime.timezone.utc)), [], "Test", "ata", [], True, True, "PASS", []), mock_node: str = "/dev/sdT", mock_serial: str = "HDD-TEST-INTERFACE", mock_model: str = "TEST-MODEL", mock_capacity: float = "1234.5", mock_locality: str = "local", mock_tasksvc = TaskService()):
-        self._node = mock_node
-        self._model = mock_model
-        self._serial = mock_serial
-        self._capacity = mock_capacity
+        self.node = mock_node
+        self.model = mock_model
+        self.serial = mock_serial
+        self.capacity = mock_capacity
         self._taskqueue = TaskQueue(task_change_callback=self._tc_callback)
         self._smart = mock_smart
-        self._locality = mock_locality
+        self.locality = mock_locality
         self._tasksvc = mock_tasksvc
 
-        self._seen = 0
+        self.seen = 0
         self._notes = Notes()
 
         self._tc_callbacks = []
@@ -34,76 +55,6 @@ class HddTestInterface(HddInterface):
         return self._taskqueue
 
     @property
-    def serial(self) -> str:
-        """
-        Returns the serial for the device
-        """
-        return self._serial
-
-    @property
-    def model(self) -> str:
-        """
-        Returns the model for the device
-        """
-        return self._model
-
-    @property
-    def wwn(self) -> str:
-        """
-        Returns the WWN that smartctl obtained for the device
-        """
-        return "1234"
-
-    @property
-    def node(self) -> str:
-        """
-        Returns the node for the device ("/dev/sdX" for example)
-        """
-        return self._node
-
-    @property
-    def name(self) -> str:
-        """
-        Returns the kernel name for the device. ("sdX" for example)
-        """
-        return self._node.replace("/dev/", "")
-
-    @property
-    def port(self):
-        """
-        Returns the port for the device, if applicable.
-        """
-        return "Nowhere"
-
-    @property
-    def capacity(self) -> float:
-        """
-        Returns the capacity in GiB for the device
-        """
-        return self._capacity
-
-    @property
-    def medium(self) -> str:
-        """
-        Returns the medium of the device. (SSD or HDD)
-        """
-        return "HDD"
-
-    @property
-    def seen(self) -> int:
-        """
-        Returns how many times this drive has been seen
-        """
-        return self._seen
-    
-    @seen.setter
-    def seen(self, value: int):
-        """
-        Sets how many times this drive has been seen
-        """
-        self._seen = value
-
-    @property
     def notes(self):
         """
         The notes object
@@ -117,21 +68,11 @@ class HddTestInterface(HddInterface):
         """
         return self._smart
 
-    @property
-    def locality(self) -> str:
-        """
-        Some string representing where the HDD exists. 
-        HDDs on the same machine as the server should report 'local'
-        """
-        return self._locality
-
-
     def disconnect(self):
         """
         Block and finalize anything on the HDD
         """
         pass
-
     
     def add_task(self, task_name, parameters, *a, **kw) -> bool:
         """

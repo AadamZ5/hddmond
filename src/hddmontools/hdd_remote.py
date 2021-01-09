@@ -3,7 +3,7 @@ import asyncio
 import socket
 import logging
 
-from hddmontools.hdd_interface import HddInterface, TaskQueueInterface
+from hddmontools.hdd_interface import ActiveHdd, TaskQueueInterface
 from hddmontools.hdd import Hdd
 from hddmontools.message_dispatcher import MessageDispatcher
 from hddmontools.config_service import ConfigService
@@ -15,7 +15,7 @@ class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemo
     HddRemoteHost serves as a wrapper for a native HDD object on a client's end. The HddRemoteHost will host a connection to an HDD, which a reciever server
     will dispatch commands and data to and from. This will allow remote computers to host devices on one server.
     """
-    def __init__(self, hdd:HddInterface, address):
+    def __init__(self, hdd:ActiveHdd, address):
         self.hdd = hdd
         self.hdd.add_task_changed_callback(self._tc_callback)
         self._socket = socket.create_connection(address, 10000)
@@ -77,7 +77,7 @@ class HddRemoteHost: #This doesnt inherit from HddInterface, because the HddRemo
             #TODO: Parse this!
             pass
 
-class HddRemoteReciever(HddInterface):
+class HddRemoteReciever(ActiveHdd):
     """
     HddRemoteReciever is used on the server side after an incoming connection is established with a client. The client will host a connection
     to their HDD using HddRemoteHost which serves as a translater or proxy for commands and data. 
@@ -358,7 +358,7 @@ class HddRemoteRecieverServer:
         if(callback != None) and (callable(callback)):
             self._callbacks.append(callback)
 
-    def _do_callbacks(self, action: str, device: HddInterface):
+    def _do_callbacks(self, action: str, device: ActiveHdd):
         for c in self._callbacks:
             c(action=action, device=device)
 
