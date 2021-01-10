@@ -2,7 +2,7 @@ from typing import List, Optional, Union
 import strawberry
 
 from hddmondtools.databaseinterface import HddEntry
-from hddmondtools.hddmanager import HddListModel
+from hddmondtools.hddlistmodel import HddListModel
 from hddmontools.hdd_interface import ActiveHdd 
 
 class StrawberryGraphQL:
