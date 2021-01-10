@@ -21,9 +21,9 @@ logger.setLevel(logging.DEBUG)
 if __name__ == '__main__':
     load_injection_container() #For the `injectable` module. Scans files for injectable items.
     logger.info("Executing file...")
-    log_path = Path('logs').resolve()
+    log_path = (Path(__file__).parent / 'logs').resolve()
     console_logfeed = logging.StreamHandler()
-    makedirs(log_path, 0x755, True)
+    log_path.mkdir(mode=0x755, parents=True, exist_ok=True) # Make the logs path.
     file_logfeed = logging.handlers.RotatingFileHandler(str(log_path / (str(datetime.datetime.now().isoformat(sep="_", timespec='seconds')) + '.log')), backupCount=5, maxBytes=500000000, delay=True)
     slim_formatter = logging.Formatter("%(asctime)s [%(levelname)s] - %(message)s", "%Y-%m-%d %H:%M:%S")
     general_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s", "%Y-%m-%d %H:%M:%S")
