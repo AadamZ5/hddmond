@@ -10,8 +10,8 @@ from typing import Coroutine, List
 from controllermodel import GenericControllerContext
 from websockets import WebSocketClientProtocol
 
-from hddmontools.apiinterface import ApiInterface
-from hddmontools.config_service import ConfigService
+from lib.apiinterface import ApiInterface
+from lib.config_service import ConfigService
 
 
 class ClientDataMulticaster: #This is used to keep track of all clients connected, to allow multicasting. 

@@ -9,11 +9,11 @@ sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, PACKAGE_PARENT)))
 from injectable import load_injection_container, inject, InjectionContainer
 load_injection_container() #For the `injectable` module. Scans files for injectable items.
 
-from hddmontools.hdd import Hdd
-from hddmontools.task_service import TaskService
-from hddmontools.task import Task
-from hddmontools.hdd_remote import HddRemoteHost
-from hddmontools.hdd_test_interface import HddTestInterface
+from lib.hdd import Hdd
+from lib.task_service import TaskService
+from lib.task import Task
+from lib.hdd_remote import HddRemoteHost
+from lib.hdd_test_interface import HddTestInterface
 import time
 class LocalInstance:
 

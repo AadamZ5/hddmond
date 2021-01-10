@@ -1,7 +1,7 @@
 import subprocess
 import logging
 
-from hddmontools.pciaddress import PciAddress
+from lib.pciaddress import PciAddress
 from injectable import injectable
 
 class AhciDevice():

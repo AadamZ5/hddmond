@@ -5,9 +5,9 @@ from datetime import datetime
 from typing import List, Optional, overload
 from abc import ABC, abstractmethod
 
-from hddmontools.hdd_interface import ActiveHdd
-from hddmontools.hdd_entry import HddEntry
-from hddmontools.hddmon_dataclasses import HddData, TaskData, AttributeData, ImageData
+from lib.hdd_interface import ActiveHdd
+from lib.hdd_entry import HddEntry
+from lib.hddmon_dataclasses import HddData, TaskData, AttributeData, ImageData
 
 
 class GenericDatabase(ABC):

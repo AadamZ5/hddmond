@@ -3,7 +3,7 @@ import logging
 from typing import Dict, TypeVar
 from injectable import injectable
 
-#from hddmontools.task import Task
+#from lib.task import Task
 
 T = TypeVar('T')
 

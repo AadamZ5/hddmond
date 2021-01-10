@@ -5,8 +5,8 @@ from abc import ABC, abstractmethod
 
 from strawberry.scalars import ID
 
-from hddmontools.hdd_entry import HddEntry
-from hddmontools.hddmon_dataclasses import SmartData
+from lib.hdd_entry import HddEntry
+from lib.hddmon_dataclasses import SmartData
 
 class TaskQueueInterface(ABC):
     

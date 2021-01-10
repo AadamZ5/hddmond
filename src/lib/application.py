@@ -3,10 +3,10 @@ import logging
 
 from injectable import inject
 
-from hddmontools.hddlistmodel import HddListModel
-from hddmontools.websocket import WebsocketServer
-from hddmontools.hddmon_dataclasses import ImageData
-from hddmontools.image import ImageManager
+from lib.hddlistmodel import HddListModel
+from lib.websocket import WebsocketServer
+from lib.hddmon_dataclasses import ImageData
+from lib.image import ImageManager
 
 class App:
     def __init__(self):

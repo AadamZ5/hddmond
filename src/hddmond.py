@@ -10,8 +10,8 @@ import datetime
 from injectable import load_injection_container, inject
 from pathlib import Path
 
-from hddmontools.application import App
-from hddmontools.config_service import ConfigService
+from lib.application import App
+from lib.config_service import ConfigService
 
 root_logger = logging.getLogger()
 logger = logging.getLogger("Bootstrapper")

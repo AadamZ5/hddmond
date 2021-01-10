@@ -4,7 +4,7 @@ import logging
 from injectable import injectable
 from pathlib import Path
 
-from hddmontools.pciaddress import PciAddress
+from lib.pciaddress import PciAddress
 
 class SasDevice:
     def __init__(self, index=None):

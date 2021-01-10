@@ -4,10 +4,10 @@ import datetime
 from typing import Optional
 from strawberry.scalars import ID
 
-from hddmontools.hdd_interface import ActiveHdd
-from hddmontools.task import TaskQueue, TaskService, Task
-from hddmontools.notes import Notes
-from hddmontools.hddmon_dataclasses import SmartData
+from lib.hdd_interface import ActiveHdd
+from lib.task import TaskQueue, TaskService, Task
+from lib.notes import Notes
+from lib.hddmon_dataclasses import SmartData
 
 @strawberry.type
 class HddTestInterface(ActiveHdd):

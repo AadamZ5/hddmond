@@ -1,10 +1,10 @@
 from typing import Union
 import strawberry
-from hddmontools.databaseinterface import HddEntry
+from lib.databaseinterface import HddEntry
 
-from hddmontools.hdd import Hdd
-from hddmontools.hdd_interface import ActiveHdd
-from hddmontools.hdd_test_interface import HddTestInterface
+from lib.hdd import Hdd
+from lib.hdd_interface import ActiveHdd
+from lib.hdd_test_interface import HddTestInterface
 
 @strawberry.type
 class Query:

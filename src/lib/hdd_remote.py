@@ -3,10 +3,10 @@ import asyncio
 import socket
 import logging
 
-from hddmontools.hdd_interface import ActiveHdd, TaskQueueInterface
-from hddmontools.hdd import Hdd
-from hddmontools.message_dispatcher import MessageDispatcher
-from hddmontools.config_service import ConfigService
+from lib.hdd_interface import ActiveHdd, TaskQueueInterface
+from lib.hdd import Hdd
+from lib.message_dispatcher import MessageDispatcher
+from lib.config_service import ConfigService
 
 
 

@@ -1,14 +1,14 @@
-from hddmontools.databaseinterface import GenericDatabase
+from lib.databaseinterface import GenericDatabase
 from cloudant import CouchDB
 from requests import HTTPError
-from hddmontools.hddmon_dataclasses import HddData, TaskData, AttributeData, SmartData
-from hddmontools.config_service import ConfigService
+from lib.hddmon_dataclasses import HddData, TaskData, AttributeData, SmartData
+from lib.config_service import ConfigService
 import datetime
 from injectable import injectable, injectable_factory, inject
 
 import logging
 
-from hddmontools.hdd_entry import HddEntry
+from lib.hdd_entry import HddEntry
 
 class CouchDatabase(GenericDatabase):
     def __init__(self, address_with_port, user, passw):

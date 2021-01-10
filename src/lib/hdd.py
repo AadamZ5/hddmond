@@ -12,13 +12,13 @@ from typing import Dict, Any, Optional, Union
 
 from strawberry.scalars import ID
 
-from hddmontools.task_service import TaskService
-from hddmontools.test import Test
-from hddmontools.task import Task, TaskQueue, ExternalTask
-from hddmontools.portdetection import PortDetection
-from hddmontools.notes import Notes
-from hddmontools.hdd_interface import ActiveHdd, TaskQueueInterface
-from hddmontools.hddmon_dataclasses import SmartData
+from lib.task_service import TaskService
+from lib.test import Test
+from lib.task import Task, TaskQueue, ExternalTask
+from lib.portdetection import PortDetection
+from lib.notes import Notes
+from lib.hdd_interface import ActiveHdd, TaskQueueInterface
+from lib.hddmon_dataclasses import SmartData
 
 #
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  

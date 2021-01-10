@@ -11,7 +11,7 @@ from .notes import Notes
 from .image import ImageManager
 from .task_service import TaskService
 import datetime
-from hddmontools.hdd_interface import TaskQueueInterface
+from lib.hdd_interface import TaskQueueInterface
 from injectable import Autowired, autowired, injectable
 from abc import ABC, abstractmethod
 from typing import Coroutine
