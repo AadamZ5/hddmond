@@ -3,7 +3,7 @@ import logging
 
 from injectable import inject
 
-from hddmondtools.hddmanager import ListModel
+from hddmondtools.hddmanager import HddListModel
 from hddmondtools.websocket import WebsocketServer
 from hddmondtools.hddmon_dataclasses import ImageData
 from hddmontools.image import ImageManager
@@ -14,7 +14,7 @@ class App:
         self.logger.setLevel(logging.DEBUG)
         self.logger.info("Initializing application...")
         self.images = inject(ImageManager)
-        self.list = ListModel(taskChangedCallback = self.task_changed_cb)
+        self.list = HddListModel(taskChangedCallback = self.task_changed_cb)
     
         self.ws = inject(WebsocketServer)
         self.ws.connect_instance(self.list) #All API functions are defined in ListModel

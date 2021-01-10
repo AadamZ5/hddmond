@@ -1,37 +1,28 @@
 #!../env/bin/python
-import os, sys
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.path.pardir))
-import subprocess
-import multiprocessing.connection as ipc
 import proc.core
 import pyudev
-from pySMART import Device
-from hddmontools.hdd import Hdd, ActiveHdd
-from hddmontools.task_service import TaskService
-from hddmontools.task import ExternalTask, Task, ImageTask, EraseTask
-from hddmontools.test import Test
-from hddmontools.image import DiskImage, Partition
-from hddmontools.smartctl_hdd_detector import SmartctlDetector
 import pySMART
 import time
 import threading
-import hddmontools.sasdetection
-import hddmontools.portdetection
 import signal
 import logging
-from socket import timeout
-from hddmondtools.websocket import WebsocketServer
-from hddmondtools.hddmon_dataclasses import HddData, TaskQueueData, TaskData, ImageData
-from hddmondtools.databaseinterface import GenericDatabase
-from hddmondtools.couchdb import CouchDatabase
-from hddmontools.hdd_remote import HddRemoteRecieverServer, HddRemoteReciever
-from hddmondtools.websocket import WebsocketServer
+import asyncio
+
 from injectable import inject
 from pathlib import Path
 
-import asyncio
+from hddmontools.hdd import Hdd, ActiveHdd
+from hddmontools.task_service import TaskService
+from hddmontools.task import ExternalTask
+from hddmontools.test import Test
+from hddmontools.smartctl_hdd_detector import SmartctlDetector
+from hddmondtools.websocket import WebsocketServer
+from hddmondtools.hddmon_dataclasses import HddData, TaskQueueData
+from hddmondtools.couchdb import CouchDatabase
+from hddmontools.hdd_remote import HddRemoteRecieverServer
+from hddmondtools.websocket import WebsocketServer
 
-class ListModel:
+class HddListModel:
     """
     Data model that holds hdd list.
     """
@@ -581,7 +572,7 @@ class ListModel:
         self.start()
 
 if __name__ == '__main__':
-    hd = ListModel()
+    hd = HddListModel()
     signal.signal(signal.SIGINT, hd.signal_close)
     signal.signal(signal.SIGQUIT, hd.signal_close)
     signal.signal(signal.SIGTERM, hd.signal_close)

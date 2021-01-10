@@ -2,7 +2,7 @@ from typing import List, Optional, Union
 import strawberry
 
 from hddmondtools.databaseinterface import HddEntry
-from hddmondtools.hddmanager import ListModel
+from hddmondtools.hddmanager import HddListModel
 from hddmontools.hdd_interface import ActiveHdd 
 
 class StrawberryGraphQL:
@@ -30,6 +30,6 @@ class StrawberryGraphQL:
     class Subscription:
         pass
 
-    def __init__(self, list_model: ListModel):
+    def __init__(self, list_model: HddListModel):
         self.list_model = list_model
         self.schema = strawberry.Schema(query=self.Query, mutation=self.Mutation, subscription=self.Subscription)
