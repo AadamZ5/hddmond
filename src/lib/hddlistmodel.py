@@ -11,16 +11,15 @@ import asyncio
 from injectable import inject
 from pathlib import Path
 
-from lib.hdd import Hdd, ActiveHdd
-from lib.task_service import TaskService
-from lib.task import ExternalTask
-from lib.test import Test
-from lib.smartctl_hdd_detector import SmartctlDetector
-from lib.websocket import WebsocketServer
+from lib.hddlib.hdd import Hdd, ActiveHdd
+from lib.tasklib.task_service import TaskService
+from lib.tasklib.externaltask import ExternalTask
+from lib.tasklib.test import Test
+from lib.oslib.smartctl_hdd_detector import SmartctlDetector
+from lib.api.websocket import WebsocketServer
 from lib.hddmon_dataclasses import HddData, TaskQueueData
-from lib.couchdb import CouchDatabase
-from lib.hdd_remote import HddRemoteRecieverServer
-from lib.websocket import WebsocketServer
+from lib.dblib.couchdb import CouchDatabase
+from lib.hddlib.hdd_remote import HddRemoteRecieverServer
 
 class HddListModel:
     """

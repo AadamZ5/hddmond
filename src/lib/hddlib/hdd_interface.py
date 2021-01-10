@@ -1,11 +1,10 @@
 import strawberry
 
-from typing import Union, Optional
+from typing import  Optional
 from abc import ABC, abstractmethod
-
 from strawberry.scalars import ID
 
-from lib.hdd_entry import HddEntry
+from lib.hddlib.hdd_entry import HddEntry
 from lib.hddmon_dataclasses import SmartData
 
 class TaskQueueInterface(ABC):

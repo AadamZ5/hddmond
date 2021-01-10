@@ -4,8 +4,18 @@
 #
 ###
 import datetime
+import strawberry
 
+from typing import List
+
+@strawberry.type
 class Note:
+
+    note: str
+    timestamp: datetime.datetime
+    note_taker: str
+    tags: List[str]
+
     def __init__(self, note="", timestamp=datetime.datetime.now(datetime.timezone.utc), note_taker="", tags=None):
         if tags == None:
             tags = []

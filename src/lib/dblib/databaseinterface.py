@@ -1,13 +1,9 @@
-import strawberry
-
-from strawberry.scalars import ID
-from datetime import datetime
-from typing import List, Optional, overload
+from typing import Optional
 from abc import ABC, abstractmethod
 
-from lib.hdd_interface import ActiveHdd
-from lib.hdd_entry import HddEntry
-from lib.hddmon_dataclasses import HddData, TaskData, AttributeData, ImageData
+from lib.hddlib.hdd_interface import ActiveHdd
+from lib.hddlib.hdd_entry import HddEntry
+from lib.hddmon_dataclasses import TaskData
 
 
 class GenericDatabase(ABC):

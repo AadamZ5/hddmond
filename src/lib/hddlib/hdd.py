@@ -1,23 +1,21 @@
 import pyudev
 import pySMART
 import time
-import subprocess
-import datetime
-import enum
 import logging
 import strawberry
 
 from injectable import inject
-from typing import Dict, Any, Optional, Union
-
+from typing import Dict, Any, Optional
 from strawberry.scalars import ID
 
-from lib.task_service import TaskService
-from lib.test import Test
-from lib.task import Task, TaskQueue, ExternalTask
-from lib.portdetection import PortDetection
+from lib.tasklib.task_service import TaskService
+from lib.tasklib.task import Task
+from lib.tasklib.test import Test
+from lib.tasklib.externaltask import ExternalTask
+from lib.tasklib.taskqueue import TaskQueue
+from lib.oslib.portdetection import PortDetection
 from lib.notes import Notes
-from lib.hdd_interface import ActiveHdd, TaskQueueInterface
+from lib.hddlib.hdd_interface import ActiveHdd, TaskQueueInterface
 from lib.hddmon_dataclasses import SmartData
 
 #
@@ -35,17 +33,6 @@ class Hdd(ActiveHdd):
         Returns the task queue for the device
         """
         return self._TaskQueue
-
-    serial: ID = strawberry.field(description="The serial of the device")
-    model: str = strawberry.field(description="The model number for the device")
-    wwn: Optional[str] = strawberry.field(description="The world-wide-number of the device, if applicable")
-    node: str = strawberry.field(description="The system device node, local to the device's operating environment")
-    name: str = strawberry.field(description="The kernel name of the device, local to the device's operating environment")
-    port: Optional[str] = strawberry.field(description="The port the device is connected to, if found and if applicable, local to the device's operating environment")
-    capacity: float = strawberry.field(description="The capacity of the device in GiB")
-    medium: str = strawberry.field(description="The type of storage device, usually HDD or SSD")
-    seen: int = strawberry.field(description="The amount of times the device has been seen")
-    locality: str = strawberry.field(description="A string describing the operating environment that the device is located at")
 
     @property
     def notes(self):
@@ -86,6 +73,7 @@ class Hdd(ActiveHdd):
         self.logger.setLevel(logging.DEBUG)
         self.logger.debug(f"Initializing new HDD from {node}")
         self.serial = '"HDD"'
+        self.locality = "local"
         self.model = str()
         self.wwn = str()
         self.node = node

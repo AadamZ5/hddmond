@@ -4,24 +4,13 @@ import datetime
 from typing import Optional
 from strawberry.scalars import ID
 
-from lib.hdd_interface import ActiveHdd
+from lib.hddlib.hdd_interface import ActiveHdd
 from lib.task import TaskQueue, TaskService, Task
 from lib.notes import Notes
 from lib.hddmon_dataclasses import SmartData
 
 @strawberry.type
 class HddTestInterface(ActiveHdd):
-
-    serial: ID
-    model: str
-    wwn: Optional[str]
-    node: str
-    name: str
-    port: Optional[str]
-    capacity: float
-    medium: str
-    seen: int
-    locality: str
 
     @strawberry.field
     def last_seen(self) -> datetime.datetime:

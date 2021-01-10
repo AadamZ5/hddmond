@@ -1,6 +1,4 @@
 from abc import ABC, abstractmethod
-import functools
-import inspect
 from controllermodel import GenericController
 
 class ApiInterface(GenericController, ABC):

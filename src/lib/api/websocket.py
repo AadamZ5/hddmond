@@ -10,7 +10,7 @@ from typing import Coroutine, List
 from controllermodel import GenericControllerContext
 from websockets import WebSocketClientProtocol
 
-from lib.apiinterface import ApiInterface
+from lib.api.apiinterface import ApiInterface
 from lib.config_service import ConfigService
 
 

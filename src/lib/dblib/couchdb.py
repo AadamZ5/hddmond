@@ -1,14 +1,14 @@
-from lib.databaseinterface import GenericDatabase
+import datetime
+import logging
+
+from injectable import injectable_factory, inject
 from cloudant import CouchDB
 from requests import HTTPError
 from lib.hddmon_dataclasses import HddData, TaskData, AttributeData, SmartData
 from lib.config_service import ConfigService
-import datetime
-from injectable import injectable, injectable_factory, inject
 
-import logging
-
-from lib.hdd_entry import HddEntry
+from lib.dblib.databaseinterface import GenericDatabase
+from lib.hddlib.hdd_entry import HddEntry
 
 class CouchDatabase(GenericDatabase):
     def __init__(self, address_with_port, user, passw):

@@ -1,6 +1,6 @@
 import strawberry
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from strawberry import  ID
 from typing import List, Optional
 from datetime import datetime

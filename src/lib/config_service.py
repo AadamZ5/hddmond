@@ -1,8 +1,9 @@
-from injectable import injectable
-from pathlib import Path
 import json
 import os
 import logging
+
+from injectable import injectable
+from pathlib import Path
 
 @injectable(singleton=True)
 class ConfigService:
