@@ -3,9 +3,9 @@ import logging
 
 from injectable import inject
 
-from hddmondtools.hddlistmodel import HddListModel
-from hddmondtools.websocket import WebsocketServer
-from hddmondtools.hddmon_dataclasses import ImageData
+from hddmontools.hddlistmodel import HddListModel
+from hddmontools.websocket import WebsocketServer
+from hddmontools.hddmon_dataclasses import ImageData
 from hddmontools.image import ImageManager
 
 class App:

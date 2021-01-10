@@ -16,11 +16,11 @@ from hddmontools.task_service import TaskService
 from hddmontools.task import ExternalTask
 from hddmontools.test import Test
 from hddmontools.smartctl_hdd_detector import SmartctlDetector
-from hddmondtools.websocket import WebsocketServer
-from hddmondtools.hddmon_dataclasses import HddData, TaskQueueData
-from hddmondtools.couchdb import CouchDatabase
+from hddmontools.websocket import WebsocketServer
+from hddmontools.hddmon_dataclasses import HddData, TaskQueueData
+from hddmontools.couchdb import CouchDatabase
 from hddmontools.hdd_remote import HddRemoteRecieverServer
-from hddmondtools.websocket import WebsocketServer
+from hddmontools.websocket import WebsocketServer
 
 class HddListModel:
     """

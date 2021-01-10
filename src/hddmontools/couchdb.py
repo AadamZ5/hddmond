@@ -1,7 +1,7 @@
-from hddmondtools.databaseinterface import GenericDatabase
+from hddmontools.databaseinterface import GenericDatabase
 from cloudant import CouchDB
 from requests import HTTPError
-from hddmondtools.hddmon_dataclasses import HddData, TaskData, AttributeData, SmartData
+from hddmontools.hddmon_dataclasses import HddData, TaskData, AttributeData, SmartData
 from hddmontools.config_service import ConfigService
 import datetime
 from injectable import injectable, injectable_factory, inject

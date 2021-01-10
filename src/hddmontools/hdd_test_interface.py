@@ -7,7 +7,7 @@ from strawberry.scalars import ID
 from hddmontools.hdd_interface import ActiveHdd
 from hddmontools.task import TaskQueue, TaskService, Task
 from hddmontools.notes import Notes
-from hddmondtools.hddmon_dataclasses import SmartData
+from hddmontools.hddmon_dataclasses import SmartData
 
 @strawberry.type
 class HddTestInterface(ActiveHdd):

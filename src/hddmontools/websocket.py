@@ -10,7 +10,7 @@ from typing import Coroutine, List
 from controllermodel import GenericControllerContext
 from websockets import WebSocketClientProtocol
 
-from hddmondtools.apiinterface import ApiInterface
+from hddmontools.apiinterface import ApiInterface
 from hddmontools.config_service import ConfigService
 
 

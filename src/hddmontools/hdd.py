@@ -18,7 +18,7 @@ from hddmontools.task import Task, TaskQueue, ExternalTask
 from hddmontools.portdetection import PortDetection
 from hddmontools.notes import Notes
 from hddmontools.hdd_interface import ActiveHdd, TaskQueueInterface
-from hddmondtools.hddmon_dataclasses import SmartData
+from hddmontools.hddmon_dataclasses import SmartData
 
 #
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  

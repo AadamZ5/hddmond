@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 
 from hddmontools.hdd_interface import ActiveHdd
 from hddmontools.hdd_entry import HddEntry
-from hddmondtools.hddmon_dataclasses import HddData, TaskData, AttributeData, ImageData
+from hddmontools.hddmon_dataclasses import HddData, TaskData, AttributeData, ImageData
 
 
 class GenericDatabase(ABC):

@@ -1,6 +1,6 @@
 from typing import Union
 import strawberry
-from hddmondtools.databaseinterface import HddEntry
+from hddmontools.databaseinterface import HddEntry
 
 from hddmontools.hdd import Hdd
 from hddmontools.hdd_interface import ActiveHdd

@@ -1,8 +1,8 @@
 from typing import List, Optional, Union
 import strawberry
 
-from hddmondtools.databaseinterface import HddEntry
-from hddmondtools.hddlistmodel import HddListModel
+from hddmontools.databaseinterface import HddEntry
+from hddmontools.hddlistmodel import HddListModel
 from hddmontools.hdd_interface import ActiveHdd 
 
 class StrawberryGraphQL:

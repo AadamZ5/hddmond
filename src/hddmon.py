@@ -9,7 +9,7 @@ import urwid as ui
 import additional_urwid_widgets as ui_special
 import time
 import threading
-from hddmondtools.hddmon_dataclasses import HddData, TaskData, TaskQueueData
+from hddmontools.hddmon_dataclasses import HddData, TaskData, TaskQueueData
 
 debug = False
 def logwrite(s:str, endl='\n'):

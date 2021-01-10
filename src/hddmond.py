@@ -10,7 +10,7 @@ import datetime
 from injectable import load_injection_container, inject
 from pathlib import Path
 
-from hddmondtools.application import App
+from hddmontools.application import App
 from hddmontools.config_service import ConfigService
 
 root_logger = logging.getLogger()
