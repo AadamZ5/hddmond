@@ -8,6 +8,8 @@ from injectable import injectable, injectable_factory, inject
 
 import logging
 
+from hddmontools.hdd_entry import HddEntry
+
 class CouchDatabase(GenericDatabase):
     def __init__(self, address_with_port, user, passw):
         self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)
@@ -170,6 +172,17 @@ class CouchDatabase(GenericDatabase):
             r_hdd['smart_captures'] = []
         r_hdd['smart_captures'].append(sc_doc['_id'])
         r_hdd.save()
+
+    def get_hdd(self, serial: str):
+
+        if serial is None:
+            return
+
+        r_hdd = self.hdddb[serial]
+        r_hdd.fetch()
+
+        return HddEntry(r_hdd['serial'], r_hdd['model'], r_hdd['wwn'], r_hdd['capacity'])
+        
 
 @injectable_factory(CouchDatabase)
 def couchdb_factory():

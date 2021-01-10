@@ -8,7 +8,6 @@ import logging.handlers
 import datetime
 
 from injectable import load_injection_container, inject
-load_injection_container('./') #For the `injectable` module. Scans files for injectable items.
 from pathlib import Path
 from os import makedirs
 
@@ -20,6 +19,7 @@ logger = logging.getLogger("Bootstrapper")
 logger.setLevel(logging.DEBUG)
 
 if __name__ == '__main__':
+    load_injection_container() #For the `injectable` module. Scans files for injectable items.
     logger.info("Executing file...")
     log_path = Path('logs').resolve()
     console_logfeed = logging.StreamHandler()

@@ -5,7 +5,6 @@
 ###
 import datetime
 
-
 class Note:
     def __init__(self, note="", timestamp=datetime.datetime.now(datetime.timezone.utc), note_taker="", tags=None):
         if tags == None:
