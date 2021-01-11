@@ -1,4 +1,4 @@
-from lib.hdd_detector import HddDetector
+from lib.hddlib.hdd_detector import HddDetector
 from pySMART import DeviceList, Device
 
 import threading

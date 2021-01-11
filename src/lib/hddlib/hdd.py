@@ -2,11 +2,9 @@ import pyudev
 import pySMART
 import time
 import logging
-import strawberry
 
 from injectable import inject
-from typing import Dict, Any, Optional
-from strawberry.scalars import ID
+from typing import Dict, Any
 
 from lib.tasklib.task_service import TaskService
 from lib.tasklib.task import Task
@@ -113,8 +111,6 @@ class Hdd(ActiveHdd):
             self.capacity = None
             self.logger.error("Exception occurred while parsing capacity of drive " + self.serial + f". This drive may not function properly. {str(e)}")
 
-        super().__init__(self.serial, self.model, self.wwn, self.capacity)
-
         self._smart_last_call = time.time()
         self.medium = None #SSD or HDD
 
@@ -133,6 +129,7 @@ class Hdd(ActiveHdd):
         self.logger.debug(f"My serial is {self.serial}.")
         n = 'n' if self.medium == "" else ''
         med = self.medium if self.medium != "" else "unknown medium"
+        super().__init__(self.serial, self.model, self.wwn, self.capacity, self.node, self.port, self.medium, self.locality)
         self.logger.debug(f"I am a{n} {med}.")
         
     @staticmethod

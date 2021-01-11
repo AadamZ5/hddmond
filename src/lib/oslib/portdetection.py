@@ -4,9 +4,9 @@ import subprocess
 import logging
 
 from injectable import injectable, inject
-from lib.pciaddress import PciAddress
-from lib.ahcidetection import AhciDetective
-from lib.sasdetection import SasDetective
+from lib.oslib.pciaddress import PciAddress
+from lib.oslib.ahcidetection import AhciDetective
+from lib.oslib.sasdetection import SasDetective
 
 @injectable(singleton=True)
 class PortDetection():

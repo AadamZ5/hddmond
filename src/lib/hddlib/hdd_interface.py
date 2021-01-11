@@ -1,3 +1,4 @@
+from threading import local
 import strawberry
 
 from typing import  Optional
@@ -74,8 +75,12 @@ class ActiveHdd(HddEntry):
     seen: int = strawberry.field(description="The amount of times the device has been seen")
     locality: str = strawberry.field(description="A string describing the operating environment that the device is located at")
 
-    def __init__(self, serial: ID, model: str, wwn: Optional[str], capacity: float):
+    def __init__(self, serial: ID, model: str, wwn: Optional[str], capacity: float, node: str, port: Optional[str], medium: str, locality):
         super().__init__(serial, model, wwn, capacity)
+        self.node = node
+        self.port = port
+        self.medium = medium
+        self.locality = locality
 
     @property
     @abstractmethod

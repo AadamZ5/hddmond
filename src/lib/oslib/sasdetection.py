@@ -4,7 +4,7 @@ import logging
 from injectable import injectable
 from pathlib import Path
 
-from lib.pciaddress import PciAddress
+from lib.oslib.pciaddress import PciAddress
 
 class SasDevice:
     def __init__(self, index=None):
@@ -167,7 +167,7 @@ class SasDevice:
 
 @injectable(singleton=True)
 class SasDetective:
-    sas2ircu = str((Path(__file__).parent / '../sas2ircu' / 'sas2ircu_linux_x86_rel' / 'sas2ircu').resolve())
+    sas2ircu = str((Path(__file__).parent / '..' / '..' / 'sas2ircu' / 'sas2ircu_linux_x86_rel' / 'sas2ircu').resolve())
 
     def __init__(self):
         self.logger = logging.getLogger(__name__ + "." + self.__class__.__qualname__)

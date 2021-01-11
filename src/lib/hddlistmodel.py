@@ -8,8 +8,9 @@ import signal
 import logging
 import asyncio
 
-from injectable import inject
+from injectable import inject, injectable
 from pathlib import Path
+from typing import Callable, Coroutine, List, Union
 
 from lib.hddlib.hdd import Hdd, ActiveHdd
 from lib.tasklib.task_service import TaskService
@@ -21,6 +22,7 @@ from lib.hddmon_dataclasses import HddData, TaskQueueData
 from lib.dblib.couchdb import CouchDatabase
 from lib.hddlib.hdd_remote import HddRemoteRecieverServer
 
+@injectable(singleton=True)
 class HddListModel:
     """
     Data model that holds hdd list.
@@ -31,7 +33,8 @@ class HddListModel:
         self.logger.setLevel(logging.DEBUG)
         self.logger.debug("Initializing ListModel...")
         self.updateInterval = 3 #Interval for scanning for running SMART tests
-        self.task_change_outside_callback = taskChangedCallback #callback for when any hdd's task stuff calls back
+        self.task_change_outside_callbacks: List[Union[Callable, Coroutine]] = [] #callback for when any hdd's task stuff calls back
+        self.add_task_change_callback(taskChangedCallback)
         self.task_svc = TaskService()
         self.task_svc.initialize()
         self.hdds = [] #The list of hdd's (HddInterface class)
@@ -60,6 +63,15 @@ class HddListModel:
         if self.database != None:
             if( not self.database.connect()):
                 self.database = None
+
+    def add_task_change_callback(self, callback:Callable):
+        self.task_change_outside_callbacks.append(callback)
+
+    def call_task_change_callbacks(self, *a, **kw):
+        for c in self.task_change_outside_callbacks:
+            r = c(*a, **kw)
+            if isinstance(r, Coroutine): #See if they gave us an async callback.
+                asyncio.create_task(r)
     
     def remote_hdd_callback(self, action, device: ActiveHdd):
         if('add' in action):
@@ -102,8 +114,7 @@ class HddListModel:
         if(action == "taskfinished"):
             self.database_task_finished(hdd, Tqd)
 
-        if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
-            self.task_change_outside_callback({'update': action, 'data': {'serial': hdd.serial, 'taskqueue': Tqd}})
+        self.call_task_change_callbacks({'update': action, 'data': {'serial': hdd.serial, 'taskqueue': Tqd}})
 
     def database_task_finished(self, hdd:ActiveHdd, task_queue_data: TaskQueueData):
         if self.database == None:
@@ -487,8 +498,7 @@ class HddListModel:
             self.database.insert_attribute_capture(HddData.FromHdd(hdd))
             self.logger.info("Captured SMART data into database from {0}".format(hdd.serial))
 
-        if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
-            self.task_change_outside_callback({'update': 'add', 'data': HddData.FromHdd(hdd)})
+        self.call_task_change_callbacks({'update': 'add', 'data': HddData.FromHdd(hdd)})
         
         return True
 
@@ -499,8 +509,7 @@ class HddListModel:
         for h in self.hdds:
             if (h.node == node):
                 try:
-                    if self.task_change_outside_callback != None and callable(self.task_change_outside_callback):
-                        self.task_change_outside_callback({'update': 'remove', 'data': HddData.FromHdd(h)})
+                    self.call_task_change_callbacks({'update': 'remove', 'data': HddData.FromHdd(h)})
                     if(self.database != None):
                         self.database.update_hdd(HddData.FromHdd(h))
                     self.hdds.remove(h)

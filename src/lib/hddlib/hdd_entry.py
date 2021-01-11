@@ -23,4 +23,12 @@ class HddEntry(ABC):
     smart_captures: List[str] = strawberry.field(description="A list of S.M.A.R.T attribute snapshots") #TODO: Change to proper strawberry SmartCapture type!
 
     def __init__(self, serial: ID, model: str, wwn: Optional[str], capacity: float):
+        self.serial = serial
+        self.model = model
+        self.wwn = wwn
+        self.capacity = capacity
+        self.seen = 1
+        self.decommissioned = False
+        self.completed_tasks = []
+        self.smart_captures = []
         pass #TODO: Verify our fields with any database entry. Create one if none exists.

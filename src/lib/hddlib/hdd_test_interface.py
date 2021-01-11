@@ -5,28 +5,24 @@ from typing import Optional
 from strawberry.scalars import ID
 
 from lib.hddlib.hdd_interface import ActiveHdd
-from lib.task import TaskQueue, TaskService, Task
+from lib.tasklib.task import Task
+from lib.tasklib.taskqueue import TaskQueue
+from lib.tasklib.task_service import TaskService
 from lib.notes import Notes
 from lib.hddmon_dataclasses import SmartData
 
-@strawberry.type
 class HddTestInterface(ActiveHdd):
 
     @strawberry.field
     def last_seen(self) -> datetime.datetime:
         return datetime.datetime.now()
 
-    def __init__(self, mock_smart: SmartData = SmartData(str(datetime.datetime.now(datetime.timezone.utc)), [], "Test", "ata", [], True, True, "PASS", []), mock_node: str = "/dev/sdT", mock_serial: str = "HDD-TEST-INTERFACE", mock_model: str = "TEST-MODEL", mock_capacity: float = "1234.5", mock_locality: str = "local", mock_tasksvc = TaskService()):
-        self.node = mock_node
-        self.model = mock_model
-        self.serial = mock_serial
-        self.capacity = mock_capacity
+    def __init__(self, mock_smart: Optional[SmartData] = SmartData(str(datetime.datetime.now(datetime.timezone.utc)), [], "Test", "ata", [], True, True, "PASS", []), mock_node: str = "/dev/sdT", mock_serial: str = "HDD-TEST-INTERFACE", mock_wwn: str = "TEST-WWN", mock_model: str = "TEST-MODEL", mock_capacity: float = "1234.5", mock_locality: str = "local", mock_port: str = "ata1", mock_tasksvc = TaskService()):
+        super().__init__(mock_serial, mock_model, mock_wwn, mock_capacity, mock_node, mock_port, "TEST", mock_locality)
+        self.name = self.node.split('/')[-1]
         self._taskqueue = TaskQueue(task_change_callback=self._tc_callback)
         self._smart = mock_smart
-        self.locality = mock_locality
         self._tasksvc = mock_tasksvc
-
-        self.seen = 0
         self._notes = Notes()
 
         self._tc_callbacks = []
