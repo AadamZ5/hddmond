@@ -9,7 +9,7 @@ from lib.tasklib.task import Task
 from lib.tasklib.taskqueue import TaskQueue
 from lib.tasklib.task_service import TaskService
 from lib.notes import Notes
-from lib.hddmon_dataclasses import SmartData
+from lib.hddlib.smart_data import SmartCapture
 
 class HddTestInterface(ActiveHdd):
 
@@ -17,7 +17,7 @@ class HddTestInterface(ActiveHdd):
     def last_seen(self) -> datetime.datetime:
         return datetime.datetime.now()
 
-    def __init__(self, mock_smart: Optional[SmartData] = SmartData(str(datetime.datetime.now(datetime.timezone.utc)), [], "Test", "ata", [], True, True, "PASS", []), mock_node: str = "/dev/sdT", mock_serial: str = "HDD-TEST-INTERFACE", mock_wwn: str = "TEST-WWN", mock_model: str = "TEST-MODEL", mock_capacity: float = "1234.5", mock_locality: str = "local", mock_port: str = "ata1", mock_tasksvc = TaskService()):
+    def __init__(self, mock_smart: Optional[SmartCapture] = SmartCapture(str(datetime.datetime.now(datetime.timezone.utc)), [], "Test", "ata", [], True, True, "PASS", []), mock_node: str = "/dev/sdT", mock_serial: str = "HDD-TEST-INTERFACE", mock_wwn: str = "TEST-WWN", mock_model: str = "TEST-MODEL", mock_capacity: float = "1234.5", mock_locality: str = "local", mock_port: str = "ata1", mock_tasksvc = TaskService()):
         super().__init__(mock_serial, mock_model, mock_wwn, mock_capacity, mock_node, mock_port, "TEST", mock_locality)
         self.name = self.node.split('/')[-1]
         self._taskqueue = TaskQueue(task_change_callback=self._tc_callback)
@@ -47,7 +47,7 @@ class HddTestInterface(ActiveHdd):
         return self._notes
 
     @property
-    def smart_data(self) -> SmartData:
+    def smart_data(self) -> SmartCapture:
         """
         The smart_data object
         """

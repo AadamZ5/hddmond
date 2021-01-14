@@ -1,7 +1,13 @@
+import datetime
+import strawberry
+
 from dataclasses import dataclass
 from py_ts_interfaces import Interface
 from typing import *
-import datetime
+
+from lib.note_data import NoteData
+from lib.tasklib.task_entry import TaskEntry
+from lib.hddlib.smart_data import SmartCapture
 #
 #   The purpose of this file is to hold data classes that correspond to typescript interface definitions on the web app thing.
 #   Basically this is all a translation layer to make sure data is neatly and properly laid out for Angular.
@@ -58,97 +64,28 @@ class ImageData(Interface):
             parts.append(PartitionData.FromPartition(p))
         return ImageData(d.name, d.parttable, parts, d.path)
 
-@dataclass
-class NoteData(Interface):
-    tags: List[str]
-    note: str
-    note_taker: str
-    timestamp: str
-
-    @staticmethod
-    def FromNote(note):
-        return NoteData(note.tags, note.note, note.note_taker, str(note.timestamp.isoformat()))
-
-@dataclass
-class AttributeData(Interface):
-    index: int
-    name: str
-    flags: int
-    raw_value: int
-    threshold: int
-    attr_type: str
-    updated_freq: str
-    value: int
-    when_failed: str
-    worst: int
-
-@dataclass
-class SmartData(Interface):
-    last_captured: str
-    attributes: List[AttributeData]
-    firmware: str
-    interface: str
-    messages: List[str]
-    smart_capable: bool
-    smart_enabled: bool
-    assessment: str
-    test_capabilities: List[Tuple[str, bool]]
-    #tests: Test #Test type not implimented yet. We must rely on our database to hold this info. S.M.A.R.T. is skimpy here.
-
-    @staticmethod
-    def FromSmartDev(device):
-        formatted_attrs = []
-        for a in device.attributes:
-            if a != None:
-                attr = AttributeData(a.num, a.name, a.flags, a.raw, a.thresh, a.type, a.updated, a.value, a.when_failed, a.worst)
-                formatted_attrs.append(attr)
-        
-        test_capabilities = []
-        for k in device.test_capabilities:
-            t = (str(k), device.test_capabilities[k])
-            test_capabilities.append(t)
-
-        return SmartData(datetime.datetime.now(datetime.timezone.utc).isoformat(), formatted_attrs, device.firmware, device.interface, device.messages, device.smart_capable, device.smart_enabled, device.assessment, test_capabilities)
-
-@dataclass
-class TaskData(Interface):
-    name: str
-    progress_supported: bool
-    progress: float
-    string_rep: str
-    return_code: int
-    notes: List[NoteData]
-    time_started: str
-    time_ended: str
-
-    @staticmethod
-    def FromTask(task):
-        notes = []
-        for n in task.notes.entries:
-            notes.append(NoteData.FromNote(n))
-        return TaskData(task.name, (task.Progress != -1), task.Progress, task.ProgressString, task.returncode, notes, (task.time_started.isoformat() if task.time_started != None else None), (task.time_ended.isoformat() if task.time_ended != None else None))
 
 @dataclass
 class TaskQueueData(Interface):
     maxqueue: int
     paused: bool
-    queue: List[TaskData]
-    completed: List[TaskData]
-    current_task: TaskData
+    queue: List[Any]
+    completed: List[Any]
+    current_task: Any
 
     @staticmethod
     def FromTaskQueue(taskqueue):
         taskdatas = []
         for t in taskqueue.Queue: #t is a tuple of (preexec_cb, task, finish_cb)
             task = t[1]
-            taskdatas.append(TaskData.FromTask(task))
+            taskdatas.append(TaskEntry.FromTask(task))
         historytaskdatas = []
         for t in taskqueue.history:
-            historytaskdatas.append(TaskData.FromTask(t))
-        return TaskQueueData(taskqueue.maxqueue, taskqueue.Pause, taskdatas, historytaskdatas, (TaskData.FromTask(taskqueue.CurrentTask) if taskqueue.CurrentTask != None else None))
+            historytaskdatas.append(TaskEntry.FromTask(t))
+        return TaskQueueData(taskqueue.maxqueue, taskqueue.Pause, taskdatas, historytaskdatas, (TaskEntry.FromTask(taskqueue.CurrentTask) if taskqueue.CurrentTask != None else None))
 
 @dataclass
-class HddData(Interface):
+class HddData:
     serial: str
     model: str
     wwn: str
@@ -158,7 +95,7 @@ class HddData(Interface):
     task_queue: TaskQueueData
     node: str
     port: Optional[str]
-    smart: SmartData
+    smart: SmartCapture
     notes: List[NoteData]
     seen: int
     locality: str

@@ -1,4 +1,3 @@
-from threading import local
 import strawberry
 
 from typing import  Optional
@@ -6,63 +5,14 @@ from abc import ABC, abstractmethod
 from strawberry.scalars import ID
 
 from lib.hddlib.hdd_entry import HddEntry
-from lib.hddmon_dataclasses import SmartData
-
-class TaskQueueInterface(ABC):
-    
-    @property
-    @abstractmethod
-    def Pause(self) -> bool:
-        """
-        Returns if the queue is paused
-        """
-        raise NotImplementedError
-
-    @Pause.setter
-    @abstractmethod
-    def Pause(self, value: bool):
-        """
-        Sets the pause for the queue
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def Error(self):
-        """
-        If the queue has an error.
-        """
-        raise NotImplementedError
-
-    @Error.setter
-    @abstractmethod
-    def Error(self, value: bool):
-        """
-        Sets the error status for the queue
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def Full(self) -> bool:
-        """
-        If the queue is at capacity
-        """
-        raise NotImplementedError
+from lib.hddlib.smart_data import SmartCapture
+from lib.tasklib.taskqueue import TaskQueue
 
 @strawberry.type(description="Represents data about a device that is currently connected to the application")
 class ActiveHdd(HddEntry):
     """
     Represents data about a device that is currently connected to the application
     """
-
-    @property
-    @abstractmethod
-    def TaskQueue(self) -> TaskQueueInterface:
-        """
-        Returns the TaskQueue interface for the device
-        """
-        raise NotImplementedError
 
     serial: ID = strawberry.field(description="The serial of the device")
     model: str = strawberry.field(description="The model number for the device")
@@ -74,13 +24,15 @@ class ActiveHdd(HddEntry):
     medium: str = strawberry.field(description="The type of storage device, usually HDD or SSD")
     seen: int = strawberry.field(description="The amount of times the device has been seen")
     locality: str = strawberry.field(description="A string describing the operating environment that the device is located at")
+    task_queue: TaskQueue = strawberry.field(description="The task queue manages queued and running tasks for the device")
 
-    def __init__(self, serial: ID, model: str, wwn: Optional[str], capacity: float, node: str, port: Optional[str], medium: str, locality):
+    def __init__(self, serial: ID, model: str, wwn: Optional[str], capacity: float, node: str, port: Optional[str], medium: str, locality: str, task_queue: TaskQueue):
         super().__init__(serial, model, wwn, capacity)
         self.node = node
         self.port = port
         self.medium = medium
         self.locality = locality
+        self.task_queue = task_queue
 
     @property
     @abstractmethod
@@ -92,7 +44,7 @@ class ActiveHdd(HddEntry):
 
     @property
     @abstractmethod
-    def smart_data(self) -> SmartData:
+    def smart_data(self) -> SmartCapture:
         """
         The smart_data object
         """

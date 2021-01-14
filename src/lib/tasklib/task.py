@@ -1,6 +1,8 @@
 import enum
+import strawberry
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from lib.notes import Notes
 
@@ -8,9 +10,20 @@ class TaskResult(enum.Enum):
     FINISHED = 1,
     ERROR = 0,
 
+@strawberry.type
 class Task(ABC):
 
     display_name = "Task"
+
+    name: str = strawberry.field(description="The name of the task")
+    
+    def _get_progress_string(root):
+        return root.ProgressString
+    progress_string: str = strawberry.field(description="The progress string of the task", resolver=_get_progress_string)
+
+    def _get_return_code(root):
+        return root.returncode
+    return_code: Optional[int] = strawberry.field(description="The return code of the task, if it has finished", resolver=_get_return_code)
 
     @staticmethod
     def GetTaskParameterSchema(task):

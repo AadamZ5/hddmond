@@ -3,9 +3,12 @@ import threading
 
 from typing import Coroutine
 
-from lib.hddlib.hdd_interface import TaskQueueInterface
+import strawberry
+
+from lib.tasklib.taskqueue_interface import TaskQueueInterface
 from lib.tasklib.task import Task
 
+@strawberry.type(description="The task queue holds pending and in-progress tasks")
 class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
     '''
     A container that manages and handles a queue of multiple tasks.
@@ -31,6 +34,11 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
             self._pause = value
         self._taskchanged_cb(action='pausechange', data={'paused': self._pause})
 
+    def _get_paused(root):
+        return root.Pause
+
+    _paused: bool = strawberry.field(description="If the task queue is paused or not", name="paused", resolver=_get_paused)
+
     @property
     def Error(self):
         return self._error
@@ -40,9 +48,19 @@ class TaskQueue(TaskQueueInterface): #TODO: Use asyncio for polling and looping!
         self._error = value
         self._taskchanged_cb(action='errorchange', data={'error': self._error})
 
+    def _get_error(root):
+        return root.Error
+
+    _error: bool = strawberry.field(description="True if a pending task encountered an error", name="error", resolver=_get_error)
+
     @property
     def Full(self):
         return len(self.Queue) >= self.maxqueue
+
+    def _get_full(root):
+        return root.Full
+
+    _full: bool = strawberry.field(description="If the queue is full, if applicable", name="full")
 
     def __init__(self, maxqueue=8, between_task_wait=1, continue_on_error=True, task_change_callback=None, queue_preset=None):
         self.maxqueue = maxqueue

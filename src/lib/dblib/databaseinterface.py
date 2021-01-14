@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 from lib.hddlib.hdd_interface import ActiveHdd
 from lib.hddlib.hdd_entry import HddEntry
-from lib.hddmon_dataclasses import TaskData
+from lib.tasklib.task_entry import TaskEntry
 
 
 class GenericDatabase(ABC):
@@ -38,7 +38,7 @@ class GenericDatabase(ABC):
         pass
 
     @abstractmethod
-    def add_task(self, serial: str, task: TaskData):
+    def add_task(self, serial: str, task: TaskEntry):
         pass
 
     @abstractmethod
@@ -50,4 +50,8 @@ class GenericDatabase(ABC):
 
     @abstractmethod
     def insert_attribute_capture(self, hdd: ActiveHdd):
+        pass
+
+    @abstractmethod
+    def search_hdd(self, search_string: str):
         pass

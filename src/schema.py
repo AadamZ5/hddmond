@@ -24,8 +24,4 @@ class Query:
         print(test_param)
         return str(self)
 
-q = Query()
-#m = Mutation()
-#s = Subscription()
-
-schema = strawberry.Schema(query=q)
+schema = strawberry.Schema(query=Query)

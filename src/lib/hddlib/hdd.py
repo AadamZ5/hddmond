@@ -11,10 +11,11 @@ from lib.tasklib.task import Task
 from lib.tasklib.test import Test
 from lib.tasklib.externaltask import ExternalTask
 from lib.tasklib.taskqueue import TaskQueue
+from lib.tasklib.taskqueue_interface import TaskQueueInterface
 from lib.oslib.portdetection import PortDetection
 from lib.notes import Notes
-from lib.hddlib.hdd_interface import ActiveHdd, TaskQueueInterface
-from lib.hddmon_dataclasses import SmartData
+from lib.hddlib.hdd_interface import ActiveHdd
+from lib.hddlib.smart_data import SmartCapture
 
 #
 #   This file holds the class definition for Hdd. Hdd holds all of the information about a hard-drive (or solid-state drive) in the system.  
@@ -40,12 +41,12 @@ class Hdd(ActiveHdd):
         return self._notes
 
     @property
-    def smart_data(self) -> SmartData:
+    def smart_data(self) -> SmartCapture:
         """
         The smart_data object
         """
         self.update_smart()
-        return SmartData.FromSmartDev(self._smart)
+        return SmartCapture.FromSmartDev(self._smart)
 
     def __getstate__(self):
         # Copy the object's state from self.__dict__ which contains
@@ -129,7 +130,7 @@ class Hdd(ActiveHdd):
         self.logger.debug(f"My serial is {self.serial}.")
         n = 'n' if self.medium == "" else ''
         med = self.medium if self.medium != "" else "unknown medium"
-        super().__init__(self.serial, self.model, self.wwn, self.capacity, self.node, self.port, self.medium, self.locality)
+        super().__init__(self.serial, self.model, self.wwn, self.capacity, self.node, self.port, self.medium, self.locality, self._TaskQueue)
         self.logger.debug(f"I am a{n} {med}.")
         
     @staticmethod

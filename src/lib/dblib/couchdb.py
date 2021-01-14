@@ -4,7 +4,8 @@ import logging
 from injectable import injectable_factory, inject
 from cloudant import CouchDB
 from requests import HTTPError
-from lib.hddmon_dataclasses import HddData, TaskData, AttributeData, SmartData
+from lib.hddmon_dataclasses import HddData
+from lib.tasklib.task_entry import TaskEntry
 from lib.config_service import ConfigService
 
 from lib.dblib.databaseinterface import GenericDatabase
@@ -44,7 +45,7 @@ class CouchDatabase(GenericDatabase):
         self.logger.info("Disconnecting from database...")
         self.couch.disconnect()
 
-    def update_hdd(self, hdd: HddData):
+    def update_hdd(self, hdd: HddEntry):
         r_hdd = None
 
         if not hdd:
@@ -56,10 +57,10 @@ class CouchDatabase(GenericDatabase):
                 'model': hdd.model,
                 'wwn': hdd.wwn,
                 'capacity': hdd.capacity,
-                'first_seen': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                'first_seen': hdd.first_seen if hdd.first_seen is not None else datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 'last_seen': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                'seen': 0, #hddmond will increase this counter accordingly.
-                'decommissioned': False,
+                'seen': hdd.seen,
+                'decommissioned': hdd.decommissioned,
                 'tasks': [],
                 'notes': [],
                 'smart_captures': [],
@@ -93,7 +94,7 @@ class CouchDatabase(GenericDatabase):
 
         return new_seen_count
 
-    def add_task(self, serial: str, task:TaskData):
+    def add_task(self, serial: str, task:TaskEntry):
         r_hdd = None
         if not serial in self.hdddb:
             raise RuntimeWarning("Hdd doc " + str(serial) + " not found in database!")
@@ -178,10 +179,17 @@ class CouchDatabase(GenericDatabase):
         if serial is None:
             return
 
+        if self.hdddb is None:
+            return
+
         r_hdd = self.hdddb[serial]
         r_hdd.fetch()
 
         return HddEntry(r_hdd['serial'], r_hdd['model'], r_hdd['wwn'], r_hdd['capacity'])
+
+    def search_hdd(self, search_string: str):
+        #TODO: Search for the HDD!
+        return list()
         
 
 @injectable_factory(CouchDatabase)

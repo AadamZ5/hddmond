@@ -2,8 +2,9 @@ import asyncio
 import socket
 import logging
 
-from lib.hddlib.hdd_interface import ActiveHdd, TaskQueueInterface
+from lib.hddlib.hdd_interface import ActiveHdd
 from lib.hddlib.hdd import Hdd
+from lib.tasklib.taskqueue_interface import TaskQueueInterface
 from lib.message_dispatcher import MessageDispatcher
 from lib.config_service import ConfigService
 

@@ -9,6 +9,7 @@ from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from strawberry.asgi import GraphQL
 
+from lib.dblib.couchdb import CouchDatabase
 from lib.hddlib.hdd_entry import HddEntry
 from lib.hddlib.hdd_test_interface import HddTestInterface
 from lib.hddlistmodel import HddListModel
@@ -18,10 +19,20 @@ from lib.hddlib.hdd_interface import ActiveHdd
 class Query:
 
     @strawberry.field
-    def hdd(self, serial: str) -> Optional[Union[ActiveHdd]]:
-        #return None #TODO: Look for the HDD!
-        return HddTestInterface(None, "/dev/sdX", serial, mock_capacity=453.7)
-        #return HddEntry(serial, "Test", "8675309", 435.2)
+    def get_hdd(self, serial: str) -> Optional[Union[ActiveHdd, HddEntry]]:
+        hdd: Optional[HddEntry] = None
+        list_model = inject(HddListModel)
+        for h in list_model.hdds:
+            if h.serial == serial:
+                hdd = h
+                break
+        if hdd != None:
+            return hdd
+
+        database = inject(CouchDatabase)
+        hdd = database.get_hdd(serial)
+
+        return hdd
 
     @strawberry.field
     def live_hdds(self) -> List[ActiveHdd]:
@@ -29,8 +40,10 @@ class Query:
         return list_model.hdds
 
     @strawberry.field
-    def search_hdd(self, search_string: str) -> List[Union[ActiveHdd]]:
-        return list() #TODO: Search for the HDD!
+    def search_hdd(self, search_string: str) -> List[Union[ActiveHdd, HddEntry]]:
+        database = inject(CouchDatabase)
+        l = database.search_hdd(search_string)
+        return l
 
 @strawberry.type
 class Mutation:
