@@ -71,7 +71,7 @@ class StrawberryGraphQL:
     async def start(self):
         import uvicorn.server
         uvicorn.server.HANDLED_SIGNALS = []
-        cfg = uvicorn.Config(self.app, log_level=logging.INFO)
+        cfg = uvicorn.Config(self.app, log_level=logging.INFO, port=8001)
         self.server = uvicorn.Server(cfg)
         self.server_task = asyncio.create_task(self.server.serve())
 

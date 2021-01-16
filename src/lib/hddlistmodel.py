@@ -69,9 +69,10 @@ class HddListModel:
 
     def call_task_change_callbacks(self, *a, **kw):
         for c in self.task_change_outside_callbacks:
-            r = c(*a, **kw)
-            if isinstance(r, Coroutine): #See if they gave us an async callback.
-                asyncio.create_task(r)
+            if callable(c):
+                r = c(*a, **kw)
+                if isinstance(r, Coroutine): #See if they gave us an async callback.
+                    asyncio.create_task(r)
     
     def remote_hdd_callback(self, action, device: ActiveHdd):
         if('add' in action):
