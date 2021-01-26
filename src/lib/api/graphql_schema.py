@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import strawberry
-import uvicorn
 
 from typing import List, Optional, Union
 from injectable import inject
@@ -47,7 +46,38 @@ class Query:
 
 @strawberry.type
 class Mutation:
-    pass
+
+    @strawberry.mutation
+    def blacklist(self, serial: str, check_exists: str = False) -> bool:
+        
+        list_model = inject(HddListModel)
+        
+        if not check_exists:
+            list_model.blacklist(serials=[serial])
+            return True
+
+        else:
+            hdd: HddEntry = None
+            for h in list_model.hdds:
+                if h.serial == serial:
+                    hdd = h
+                    break
+            
+            if hdd != None:
+                list_model.blacklist(serials=[hdd.serial,])
+                return True
+
+            database = inject(CouchDatabase)
+            hdd = database.get_hdd(serial)
+
+            if hdd != None:
+                list_model.blacklist(serials=[hdd.serial,])
+                return True
+            
+            return False
+            
+            
+    
 
 @strawberry.type
 class Subscription:
@@ -57,7 +87,7 @@ class StrawberryGraphQL:
 
     def __init__(self):
         self.list_model = inject(HddListModel)
-        self.schema = strawberry.Schema(query=Query) #, mutation=self.Mutation, subscription=self.Subscription)
+        self.schema = strawberry.Schema(query=Query, mutation=Mutation) #, subscription=self.Subscription)
         self.app = Starlette(debug=False)
         self.app.add_middleware(CORSMiddleware, allow_headers=["*"], allow_origins=["*"], allow_methods=["*"])
         self.graphql_app = GraphQL(self.schema, debug=False)
@@ -69,11 +99,7 @@ class StrawberryGraphQL:
         self.server_task = None
 
     async def start(self):
-        import uvicorn.server
-        uvicorn.server.HANDLED_SIGNALS = []
-        cfg = uvicorn.Config(self.app, log_level=logging.INFO, port=8001)
-        self.server = uvicorn.Server(cfg)
-        self.server_task = asyncio.create_task(self.server.serve())
+        pass
 
     async def stop(self):
         if self.server_task != None:

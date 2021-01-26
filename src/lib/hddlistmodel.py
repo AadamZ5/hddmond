@@ -380,9 +380,9 @@ class HddListModel:
         self.logger.info(f"Got request to blacklist {len(serials)} HDD(s)...")
 
         for s in serials:
+            self.blacklist_hdds.append({'serial': s})
             for h in self.hdds:
                 if s == h.serial:
-                    self.blacklist_hdds.append({'serial': h.serial})
                     self.removeHddHdd(h)
                     self.logger.debug(f"Blacklisted and removed {h.serial}.")
                     break

@@ -32,15 +32,13 @@ websockets==8.1
 wrapt==1.11.2
 injectable==3.4.4
 typing-inspect==0.6.0
-cached-property==1.5.1
 pycollect==0.2.3
 parameters-validation==1.2.0
 typing-extensions>=3.7.4
 mypy-extensions>=0.3.0
 aniso8601==7.0.0
-astroid==2.5.0
 click==7.1.2
-graphql-relay==2.0.1
+graphql-relay>=2.0.1
 h11==0.12.0
 hupper==1.10.2
 proc==1.0
